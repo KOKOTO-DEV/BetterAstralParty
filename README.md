@@ -43,13 +43,71 @@ BAP 없이 실행하려면 원래 Steam 항목에서 INT(Global)를 선택하거
 
 ### 설정
 
-메인메뉴의 모드 설정에서 기능과 표시 옵션을 조절합니다. 일반 설정 → 언어에서 자동, 한국어, English를 선택하세요. 자동은 게임 메뉴 언어를 따르며 게임 원본 설명과 플레이어 이름은 그대로 표시합니다.
+로비의 모드 설정 버튼 또는 F8로 열고 모드 기능·일반 설정 탭에서 조절하세요. 변경 사항은 자동 저장됩니다. 아래는 1.1.4의 새 설정 기준이며, 업데이트 시 기존 저장값은 유지합니다. 전투 추천은 모드 전체를 끄는 스위치가 아닙니다.
 
-필드 휠 줌을 켜면 휠을 위로 굴려 확대하고 아래로 굴려 축소합니다. 자유 시점에서 WASD와 드래그로 이동할 수 있으며, 턴 바의 핀 오른쪽에 있는 자유 시점 카메라 종료 버튼을 누르면 기본 배율과 캐릭터 시점으로 돌아갑니다.
+#### 모드 기능 탭
 
-손패 정렬의 호버 펼치기에서는 오른쪽의 강조된 카드 제출 영역으로 카드를 드래그하세요. 안내 화살표도 오른쪽을 가리킵니다.
+- 전투 추천: 기본 ON이며 개별 OFF가 가능합니다. 공개 정보를 바탕으로 공격·놓아주기, 방어·회피, 카드 사용을 추천하고 실제 전투의 최종 피해를 표시합니다. OFF는 추천과 최종 피해를 함께 숨깁니다. 선택을 자동 입력하지 않으며, KO 최소 조건·전투 정보·슈슈 쉴드는 별도 설정입니다.
 
-축소하면 플레이어·몬스터 인디케이터가 반투명해지고, 더 멀리 축소하면 숨겨집니다. 다시 확대하면 표시됩니다.
+- 호버 수치: 기본 ON입니다. 전투 추천에 마우스를 올리면 피해와 전투불능 확률을 표시합니다. OFF는 수치만 숨기고 추천 아이콘은 유지합니다. 전투 추천이 OFF이면 이 옵션만 켜도 추천 수치는 나오지 않습니다.
+
+- KO 최소 조건 표시: 기본 ON이며 전투 추천·호버 수치와 독립적으로 끌 수 있습니다. 공격·다른 사람 전투에서는 KO 조건, 내가 방어자이면 생존 조건을 표시합니다. 카드 호버 조건도 포함하며 가장 유리한 결과를 기준으로 합니다. 최종 피해 표시를 켜는 옵션은 아닙니다.
+
+- 카드·칩 핑 팝업: 기본 ON입니다. 게임의 카드·칩 핑 말풍선을 클릭하면 원본 이미지와 설명을 추가 팝업으로 엽니다. OFF는 추가 팝업만 끄며, 게임 기본 핑 말풍선과 일반 카드 호버는 유지합니다.
+
+- 손패 기능별 정렬: 기본·클릭 펼치기·호버 펼치기 중 선택하며, 처음에는 게임 원래 배치인 기본을 사용합니다. 내가 참가한 PvE 필드의 손패를 기능별로 묶고, 클릭은 가로로, 호버는 세로로 펼칩니다. 전투 화면과 관전자 손패에는 적용하지 않습니다. 펼치는 방식과 제출 영역이 함께 바뀌며, 접힌 카드의 반투명도는 별도 조절할 수 없습니다.
+
+- 전투 정보 표시: 기본 ON입니다. 전투 HP 아래 공개 손패 장수·효과와 플레이어·몬스터의 반격 상태를 표시합니다. 효과 아이콘 호버로 설명을 봅니다. OFF는 추가 전투 정보·반격 표시와 그 애니메이션·소리를 함께 끕니다. 슈슈 쉴드와 필드 인디케이터는 별도 설정입니다.
+
+- 슈슈 쉴드 표시: 기본 ON입니다. 전투 캐릭터에 활성 쉴드를 표시하고, 쉴드가 있는 내가 방어자이면 방어 버튼과 방어 카드를 잠급니다. 표시와 입력 잠금은 하나의 설정에 묶여 있어 따로 선택할 수 없으며, OFF로 둘 다 해제합니다. 회피를 자동 입력하지는 않습니다. 전투 추천이 ON이면 쉴드를 반영한 계산·회피 추천은 유지합니다.
+
+- 플레이어 필드 인디케이터: 기본 ON입니다. 필드에 플레이어 이름·HP·공개 효과와 플레이어·몬스터의 추가 반격 아이콘을 표시합니다. 효과 아이콘을 짧게 클릭하면 게임 기본 설명을 엽니다. OFF는 추가 플레이어 인디케이터와 추가 필드 반격 아이콘을 함께 끄며, 게임 원래 몬스터 인디케이터·효과 설명은 유지합니다.
+
+- 필드 휠 줌: 기본 ON입니다. PvE 필드에서 휠 줌과 자유 시점 이동을 사용하며, 배율과 자유 시점은 턴이 바뀌어도 유지합니다. OFF는 휠 줌·추가 자유 시점·종료 버튼·줌에 따른 인디케이터 흐림과 숨김을 함께 해제하고 원래 시점을 복원합니다.
+
+- 캐릭터 이름: 본명·이명 중 선택하며 기본은 본명입니다. 캐릭터 선택·목록에서 게임에 등록된 이름을 사용합니다. 이명은 게임 원래 표기이며, 계정 닉네임·캐릭터 소개·역할 표시는 바꾸지 않습니다.
+
+기존 설정에 새 항목이 없을 때 KO 최소 조건 표시는 이전 전투 추천과 호버 수치가 모두 켜져 있었는지, 슈슈 쉴드 표시는 이전 전투 정보 표시 상태를 최초값으로 이어받습니다.
+
+#### 일반 설정 탭
+
+- 언어: 자동·한국어·English 중 선택하며 기본은 자동입니다. 모드의 메뉴·설명을 번역하고, 자동은 게임 메뉴 언어를 따릅니다. 게임 자체 언어·원본 설명·플레이어 이름은 바꾸지 않습니다.
+
+- 창 비활성화 시 음소거: 기본 ON이며 개별 OFF가 가능합니다. 다른 창으로 전환하면 게임 소리를 끄고 복귀하면 복원합니다. 저장된 볼륨은 바꾸지 않으며 PvP에서는 적용하지 않습니다.
+
+- 입력 대기 알림: 작업표시줄·Windows 알림·OFF 중 선택하며 기본은 작업표시줄입니다. 비활성 창에서 내 PvE 입력을 기다릴 때 알립니다. 두 방식 모두 모드가 소리를 재생하지 않으며, Windows 알림은 OS 알림 설정을 따릅니다.
+
+- 매칭 성사 시 창 포커스: 기본 ON이며 개별 OFF가 가능합니다. PvE 매칭 성사 또는 공개·비밀번호 로비 방장이 시작해 캐릭터 선택에 진입할 때 한 번 창을 앞으로 올립니다. 잠깐 최상위로 올린 뒤 원상복원하며, Windows가 전환을 거절하면 작업표시줄을 깜빡입니다. 영구 항상 위는 아닙니다.
+
+- 표시 크기: 기본 100%이며 75~150% 사이에서 5%씩 조절합니다. 모드 추천·전투 상태 패널만 조절하며, 게임 전체 UI나 다른 기능의 ON·OFF에는 영향을 주지 않습니다.
+
+- 배경 불투명도: 기본 100%이며 0~100% 사이에서 5%씩 조절합니다. 모드 전투 패널의 바탕만 바꾸고, 0%에서도 글자·아이콘·테두리는 유지합니다. 필드 인디케이터의 줌 반투명도와는 별개입니다.
+
+- 충돌 진단 로그: 기본 OFF이며 개별 ON·OFF가 가능합니다. 오류·성능·공개 전투 계산의 상세 진단을 기록합니다. OFF여도 기본 오류 로그와 진단 ZIP 생성은 유지합니다.
+
+- 업데이트 채널: 안정판·베타 포함 중 선택하며 기본은 안정판입니다. 선택한 저장소만 확인하고, 전환하면 결과를 갱신하며 다운로드 페이지도 해당 저장소를 엽니다. 채널 선택만으로 파일을 교체하지 않으며 비공개 베타에는 인증이 필요합니다.
+
+- 자동 다운로드·종료 후 적용: 기본은 각각 ON이며 두 옵션을 따로 끌 수 있습니다. 새 버전을 내려받고 검증한 뒤, 적용 대기 상태에서 게임·모드 실행기가 종료되면 적용합니다. 저장된 OFF와 업데이트 실패 후 OFF로 저장된 값은 유지합니다. 자동 다운로드 OFF는 업데이트 확인까지 끄는 옵션이 아닙니다.
+
+진단 폴더 열기·진단 ZIP 만들기, 업데이트 인증·로그아웃, 업데이트 확인·다운로드 페이지·업데이트 받기·취소는 실행 버튼이며 ON·OFF 설정이 아닙니다. 새 버전의 변경 사항은 업데이트 알림 팝업에 표시합니다.
+
+#### 개별 설정이 없는 자동 동작
+
+- 자동 감사합니다는 현재 개별 OFF 옵션이 없습니다. 게임 기본 감사합니다 핑 추천이 표시되고 전송 가능하면, 추천 한 건당 한 번 자동으로 감사합니다 핑을 전송합니다. 창이 비활성 상태여도 작동하며, 일시적인 입력 잠금은 해제될 때까지 기다립니다. PvP·관전·재생에서는 전송하지 않습니다. 추천 자체를 새로 만들거나 다른 핑을 자동 전송하지는 않습니다.
+
+- 반격 표시 소리는 소리만 끄는 옵션이 없습니다. 모드가 추가한 전투·인카운트 반격 아이콘에 게임 원본 애니메이션과 효과음을 사용합니다. 모드 기능 → 전투 정보 표시를 OFF로 하면 해당 표시·소리를 함께 끕니다. 게임 원래 효과음 전체를 끄는 설정은 아닙니다.
+
+- 카드 대상 선택의 확인·취소 버튼은 개별 OFF 옵션이 없습니다. 카드가 버튼을 가리지 않도록 그리기·클릭 우선순위를 올리며, 원래 위치·크기·클릭 동작은 유지합니다. 손패 기본·클릭·호버 모두에 적용합니다.
+
+- 캐릭터 역할·준비 화면 설명은 개별 OFF 옵션이 없습니다. 역할은 게임 내부 분류를 사용하고, 준비 화면의 캐릭터 초상화 호버에 공개 스킬·재사용 대기시간·잠재력 설명을 표시합니다. 캐릭터 이름 설정과 독립적입니다.
+
+- 줌에 따른 인디케이터 흐림·숨김은 필드 휠 줌과 함께 적용합니다. 기본 거리보다 축소하면 플레이어·몬스터 필드 인디케이터가 반투명해지고, 더 멀리 축소하면 숨겨지며, 다시 확대하면 표시합니다. 별도 반투명도·숨김 기준 설정은 없습니다.
+
+필드 휠 줌은 위로 확대·아래로 축소합니다. 첫 유효 휠 입력부터 자유 시점이 되며, WASD·왼쪽 마우스 드래그는 게임 원래 카메라 조작 설정과 감도를 따릅니다. 턴 바의 핀 오른쪽 자유 시점 카메라 종료 버튼으로 기본 배율·캐릭터 추적으로 복귀하세요. 버튼은 상점·대상 선택 등 상위 창 뒤에 배치됩니다.
+
+상점·카드·대상 선택 창 자체는 필드 줌을 막지 않습니다. 다만 전투 화면·설정창·실제 목록 스크롤·텍스트 입력·카드 드래그 중·터치 입력·포커스 상실 상태는 제외합니다. 확대·축소 한계는 지도 범위와 카메라의 안전 범위로 계산하며 고정 배율을 선택하는 설정은 없습니다.
+
+손패 정렬의 클릭 펼치기는 카드 위쪽, 호버 펼치기는 오른쪽의 강조된 제출 영역으로 드래그하세요. 호버 방식의 안내 화살표도 오른쪽을 가리킵니다.
 
 스크린샷과 오버레이는 본인의 Steam 단축키를 사용하세요.
 
@@ -128,13 +186,71 @@ To play without BAP, select INT(Global) from the original Steam entry or run `As
 
 ### Settings
 
-Open Mod Settings from the main menu to configure features and display options. Select Auto, 한국어 or English under General → Language. Auto follows the game menu language; native game descriptions and player names remain unchanged.
+Open Mod Settings in the lobby using its button or F8, then select Mod Features or General. Changes are saved automatically. Defaults below are for new settings in 1.1.4; updates preserve existing saved values. Battle Advice is not a master switch for the whole mod.
 
-With Field Wheel Zoom enabled, scroll up to zoom in and down to zoom out. Use WASD or drag to move in free view. Select Exit Free Camera to the right of the turn-bar pin to restore the default zoom and character view.
+#### Mod Features tab
 
-With hover-expand hand layout, drag cards into the highlighted submission area on the right. The guide arrow points right as well.
+- Battle Advice: ON by default and can be disabled independently. Uses public information to recommend Attack/Let Go, Defend/Dodge and cards, and displays observed final combat damage. OFF hides advice and final damage together. It does not automatically select actions; KO Conditions, Battle Info and Shushu Shield are separate settings.
 
-Player and monster indicators become translucent when zoomed out and hide farther out. Zoom back in to show them again.
+- Hover Details: ON by default. Hover over combat advice to see damage and KO probabilities. OFF hides numeric details, not recommendation icons. Enabling this alone does not show advice values when Battle Advice is OFF.
+
+- KO Conditions: ON by default and can be disabled independently of Battle Advice and Hover Details. Shows KO conditions when attacking or viewing another player's combat, survival conditions when you defend, and card-hover conditions. Uses best-case outcomes; it does not enable final damage display.
+
+- Card / Chip Pings: ON by default. Click a native card/chip ping bubble to open an added popup with its original image and description. OFF disables only the added popup; native ping bubbles and normal card hover remain.
+
+- Grouped Hand: choose Native, Click or Hover; the default is the game's Native layout. Groups your hand by function in the PvE field; Click expands horizontally and Hover vertically. Excludes combat screens and spectators' hands. Expansion and submission areas change together; folded-card translucency has no separate setting.
+
+- Battle Info: ON by default. Shows public hand counts/effects and player/monster counterattack status below combat HP. Hover effect icons for details. OFF disables added battle information, counter indicators and their animation/sound together. Shushu Shield and field indicators are separate settings.
+
+- Shushu Shield: ON by default. Shows active shields on combat characters and locks Defend and defense cards when you are the shielded defender. Visuals and input locks share one setting and cannot be selected separately; OFF disables both. It does not automatically select Dodge. With Battle Advice ON, shield-aware calculations and Dodge advice remain.
+
+- Player Field Indicator: ON by default. Shows field player names, HP, public effects and added player/monster counter icons. A short click on an effect opens its native description. OFF removes added player indicators and added field counter icons together; native monster indicators and effect descriptions remain.
+
+- Field Wheel Zoom: ON by default. Enables PvE field wheel zoom and free-view movement; zoom and free view persist across turns. OFF disables wheel zoom, added free view, its exit button and zoom-dependent indicator fading/hiding together, restoring the original view.
+
+- Character Names: choose Name or Title; the default is Name. Uses names registered by the game in selection screens and lists. Title restores native labels; player nicknames, character descriptions and role labels are unchanged.
+
+When an existing configuration lacks the new entries, KO Conditions initially inherits whether both Battle Advice and Hover Details were enabled; Shushu Shield inherits the previous Battle Info state.
+
+#### General tab
+
+- Language: choose Auto, 한국어 or English; the default is Auto. Translates mod menus/help, with Auto following the game menu language. Leaves the game's language, original descriptions and player names unchanged.
+
+- Mute When Unfocused: ON by default and can be disabled independently. Mutes game audio on focus loss and restores it on return. Saved volume is unchanged; not applied in PvP.
+
+- Input Alert: choose Taskbar, Windows or OFF; the default is Taskbar. Alerts while the unfocused game awaits your PvE input. Neither mode plays a mod notification sound; Windows alerts follow OS notification settings.
+
+- Focus on Match Found: ON by default and can be disabled independently. Brings the game forward once on a PvE match, or when a public/password lobby host starts character selection. Briefly raises the window to topmost, then restores its state; flashes the taskbar if Windows refuses. Not permanently always-on-top.
+
+- UI Scale: defaults to 100%, adjustable from 75–150% in 5% steps. Scales only mod advice and battle-status panels; does not scale the entire game UI or change feature toggles.
+
+- Opacity: defaults to 100%, adjustable from 0–100% in 5% steps. Changes only the background fill of mod battle panels; text, icons and borders remain at 0%. Separate from zoom-dependent field-indicator translucency.
+
+- Diagnostic Log: OFF by default and can be enabled or disabled independently. Records detailed errors, performance and public combat calculations. Basic error logs and diagnostics ZIP creation remain available when OFF.
+
+- Update Channel: choose Stable or Include Beta; the default is Stable. Checks only the selected repository. Switching refreshes its result and Download Page opens that repository. Selecting a channel does not replace files; private beta releases require authentication.
+
+- Auto Download / Apply After Exit: both default to ON and can be disabled separately. Downloads and verifies a new version, then applies a queued update after the game and mod launcher close. Saved OFF values and OFF values persisted after update failure remain. Auto Download OFF does not disable update checks.
+
+Open Diagnostics Folder, Create Diagnostics ZIP, Connect/Sign Out of Updates, Check Updates, Download Page, Get Update and Cancel Update are action buttons, not ON/OFF settings. Release notes appear in the update notification popup.
+
+#### Automatic behavior without individual settings
+
+- Automatic Thanks has no individual OFF option. When the game's native Thanks recommendation appears and can be sent, the mod automatically sends the Thanks ping once per recommendation. Works while unfocused and waits for temporary input locks to clear. Excludes PvP, spectators and replays. Does not create recommendations or automatically send other pings.
+
+- Counter-indicator sound has no sound-only option. Added combat/encounter counter icons use the game's native animation and sound. Turn OFF Mod Features → Battle Info to remove these added indicators and their sound together. This does not silence all native game effects.
+
+- Card-target Confirm/Cancel buttons have no individual OFF option. Their draw and click priority is raised so cards do not cover them; original position, size and click handlers remain. Applies to Native, Click and Hover hand layouts.
+
+- Character roles and preparation details have no individual OFF option. Roles use the game's internal classification; hovering a preparation-screen portrait shows public skill, cooldown and potential descriptions. Independent of Character Names.
+
+- Zoom-dependent indicator fading/hiding is coupled to Field Wheel Zoom. Player/monster field indicators fade beyond the default distance, hide farther out and reappear when zoomed back in. There is no separate opacity or hiding-threshold setting.
+
+Scroll up to zoom in and down to zoom out. The first accepted wheel input starts free view; WASD and left-mouse drag follow native camera-control settings and sensitivity. Select Exit Free Camera to the right of the turn-bar pin to restore default zoom and character tracking. The button stays behind higher-level windows such as shops and target selection.
+
+Shop, card and target-selection windows do not themselves block field zoom. Combat screens, settings, actual list scrolling, text entry, card dragging, touch input and focus loss are excluded. Zoom limits are calculated from map bounds and the camera's safe range; there is no fixed zoom-percentage selector.
+
+With Click hand layout, drag cards into the submission area above the cards. With Hover, use the highlighted area on the right; its guide arrow also points right.
 
 Use your own Steam screenshot and overlay hotkeys.
 
