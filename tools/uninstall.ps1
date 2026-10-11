@@ -23,9 +23,9 @@ function Get-UninstallHash([string]$Path) {
     finally { $stream.Dispose() }
 }
 try {
+    $steamRoot = (Get-ItemProperty 'HKCU:/Software/Valve/Steam' -ErrorAction SilentlyContinue).SteamPath
     if (!$GameRoot) {
-        $steam = (Get-ItemProperty 'HKCU:/Software/Valve/Steam' -ErrorAction SilentlyContinue).SteamPath
-        $candidates = @(if ($steam) { Find-IntGameDirectories $steam $root } else { Resolve-IntGameDirectory (Split-Path -Parent $root) })
+        $candidates = @(if ($steamRoot) { Find-IntGameDirectories $steamRoot $root } else { Resolve-IntGameDirectory (Split-Path -Parent $root) })
         if ($candidates.Count -eq 1) { $GameRoot = $candidates[0] }
         else {
             $candidates | ForEach-Object { Write-Host $_ }
@@ -35,10 +35,10 @@ try {
     $GameRoot = Resolve-IntGameDirectory $GameRoot
     if (!$GameRoot) { throw 'INT 게임 경로를 확인하세요. / INT game folder not found; nothing removed.' }
     # Finish interactive preparation before reading file hashes or beginning a transaction.
-    $removeShortcut = & (Join-Path $PSScriptRoot 'steam-shortcut.ps1') -Mode PlanRemove -GameRoot $GameRoot -AccountId $AccountId
-    if ($removeShortcut -and !$AccountId) {
-        $AccountId = & (Join-Path $PSScriptRoot 'steam-shortcut.ps1') -Mode ResolveAccount -GameRoot $GameRoot
+    if (!$AccountId) {
+        $AccountId = & (Join-Path $PSScriptRoot 'steam-shortcut.ps1') -Mode ResolveAccount -GameRoot $GameRoot -SteamRoot $steamRoot
     }
+    $removeShortcut = & (Join-Path $PSScriptRoot 'steam-shortcut.ps1') -Mode PlanRemove -GameRoot $GameRoot -SteamRoot $steamRoot -AccountId $AccountId
     if (!$WhatIfPreference) { Stop-BapGame $GameRoot }
     $installedLauncher = Join-Path $GameRoot 'BetterAstralParty-Launcher.exe'
     . (Join-Path $PSScriptRoot 'install-policy.ps1')
@@ -184,13 +184,12 @@ try {
     $lock = [IO.File]::Open(($journal + '.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
     if (Test-Path -LiteralPath $journal) { throw "미완료 복구를 먼저 해결하세요. / Pending recovery: $journal" }
     if ($removeShortcut) {
-        $steamRoot = (Get-ItemProperty 'HKCU:/Software/Valve/Steam').SteamPath
         Stop-BapSteam $steamRoot $steamSession
         # Re-read after Steam flushes its file, keeping the selected account pinned.
-        $removeShortcut = & (Join-Path $PSScriptRoot 'steam-shortcut.ps1') -Mode PlanRemove -GameRoot $GameRoot -AccountId $AccountId
+        $removeShortcut = & (Join-Path $PSScriptRoot 'steam-shortcut.ps1') -Mode PlanRemove -GameRoot $GameRoot -SteamRoot $steamRoot -AccountId $AccountId
     }
     if (@(Get-BapGameTargets $GameRoot).Count) { throw 'Game/launcher started; removal cancelled.' }
-    if ($removeShortcut -and (Get-Process steam -ErrorAction SilentlyContinue)) { throw 'Steam restarted; removal cancelled. Nothing removed.' }
+    if ($removeShortcut) { Assert-BapSteamStopped $steamRoot 'UninstallPreflight' }
     $backupTargets = @($targets)+@($missingOwned)
     if ($loaderUpdated -ne $null) { $backupTargets += $loaderPath; $plannedHashes[$loaderPath] = Get-UninstallHash $loaderPath }
     $transaction = Start-InstallTransaction $GameRoot $backupTargets 0
@@ -216,7 +215,7 @@ try {
         } else { $rollbackExpected[$entry.Target] = $null; [IO.File]::Delete($entry.Target) }
     }
     if ($removeShortcut) {
-        $removedShortcut = & (Join-Path $PSScriptRoot 'steam-shortcut.ps1') -Mode Remove -GameRoot $GameRoot -AccountId $AccountId
+        $removedShortcut = & (Join-Path $PSScriptRoot 'steam-shortcut.ps1') -Mode Remove -GameRoot $GameRoot -SteamRoot $steamRoot -AccountId $AccountId
     }
     Complete-InstallTransaction $GameRoot -AllowedTargets $backupTargets -VerifiedBundle $externalBundle
     $transaction = $null
@@ -238,8 +237,8 @@ try {
     Write-BapInstallerError $externalBundle $diagnosticPhase $_.Exception
     if ($removedShortcut) {
         try {
-        if (!(Get-Process steam -ErrorAction SilentlyContinue) -and
-            (Get-UninstallHash $removedShortcut.Path) -eq $removedShortcut.Hash) {
+        Assert-BapSteamStopped $steamRoot 'ShortcutRollback'
+        if ((Get-UninstallHash $removedShortcut.Path) -eq $removedShortcut.Hash) {
             [IO.File]::Copy($removedShortcut.Backup, $removedShortcut.Path, $true)
             foreach ($art in $removedShortcut.Artwork) {
                 if (!(Test-Path -LiteralPath $art.Path) -and (Get-UninstallHash $art.Backup) -eq $art.Hash) {
@@ -247,7 +246,11 @@ try {
                 } else { Write-Warning "Steam artwork recovery needs review; backup: $($art.Backup)" }
             }
         } else { Write-Warning "Steam shortcut recovery needs manual review; backup: $($removedShortcut.Backup)" }
-        } catch { Write-Warning "Steam shortcut recovery failed; backup: $($removedShortcut.Backup)" }
+        } catch {
+            Write-BapInstallerError $externalBundle 'Rollback' $_.Exception
+            $null = Write-InstallFailure $_ 'Steam shortcut rollback deferred; retain backup' $root $GameRoot -Operation 'Uninstall'
+            Write-Warning "Steam shortcut recovery failed; backup: $($removedShortcut.Backup)"
+        }
     }
     if ($transaction) {
         try { Write-BapInstallerStage $externalBundle 'Rollback' 'Begin';Restore-InstallTransaction $GameRoot -ExpectedCurrent $rollbackExpected -AllowedTargets $backupTargets -VerifiedBundle $externalBundle;Write-BapInstallerStage $externalBundle 'Rollback' 'Completed' }

@@ -31,13 +31,13 @@ PvP 방·경기가 감지되면 전투 추천·카드 정렬·추가 정보 표�
 
 ### 설치와 실행
 
-1. GitHub Releases에서 `BetterAstralParty-1.1.3.zip` 전체 설치 ZIP을 받으세요. 소스 ZIP은 설치용이 아닙니다.
+1. GitHub Releases에서 `BetterAstralParty-1.1.4.zip` 전체 설치 ZIP을 받으세요. 소스 ZIP은 설치용이 아닙니다.
 2. 원래 Steam 항목으로 INT(Global)를 한 번 실행해 게임 업데이트와 데이터 다운로드를 마친 뒤 종료하세요.
 3. 쓰기 가능한 별도 폴더에 ZIP 전체를 압축 해제하고, 동봉된 파일과 폴더를 함께 유지하세요. 게임 폴더 위에 직접 덮어쓰거나 ZIP 내부에서 실행하지 마세요.
 4. Steam에 로그인한 상태에서 압축을 푼 폴더의 `Install.cmd`를 실행하세요. PowerShell에서는 `.\Install.cmd`를 실행합니다. 경로를 묻는 경우 Steam의 설치된 파일 → 찾아보기로 확인한 `Astral Party` 폴더 또는 `8vJXnINT` 하위 폴더를 선택하세요.
 5. Steam 라이브러리의 Astral Party - Mod로 실행하세요. 첫 실행은 로더 초기화와 파일 다운로드로 시간이 걸리며 인터넷 연결이 필요할 수 있습니다.
 
-Steam 항목 등록·수정 때문에 종료 안내가 나오면 대상 목록을 확인하세요. `y`를 입력하면 표시된 Steam 게임·앱과 Steam이 강제 종료될 수 있으므로 진행 상황을 저장하고 동기화를 마치세요. 빈 입력이나 거절은 취소하며, 작업 후 Steam만 다시 실행합니다.
+Steam 항목 등록·수정 때문에 종료 안내가 나오면 Steam을 정상 종료한 뒤 `r`로 재확인할 수 있습니다. `y`를 입력하면 표시된 Steam 게임·앱과 Steam이 강제 종료될 수 있으므로 진행 상황을 저장하고 동기화를 마치세요. 빈 입력이나 거절은 취소합니다. 강제로 종료한 경우 작업 후 Steam만 다시 실행합니다. 실행 경로를 확인할 수 없는 프로세스는 강제 종료하지 않습니다.
 
 BAP 없이 실행하려면 원래 Steam 항목에서 INT(Global)를 선택하거나 게임 폴더의 `AstralParty-Vanilla.cmd`를 실행하세요. Astral Party - Mod에서는 BAP를 함께 불러옵니다. 두 실행 항목은 BAP 적용 여부만 구분하며 다른 BepInEx 모드는 그대로 유지합니다. 새 공용 로더는 ON으로 설치됩니다. 전환 전 게임을 종료하고, 원래 Steam 항목의 실행 옵션은 변경하지 마세요.
 
@@ -55,7 +55,7 @@ BAP 없이 실행하려면 원래 Steam 항목에서 INT(Global)를 선택하거
 
 ### 업데이트
 
-- 1.1.2 이하 사용자는 이후 자동 업데이트를 이용하기 전에 1.1.3 이상 전체 패키지로 한 번 수동 설치해야 합니다. 게임과 모드 실행기를 종료한 뒤 `BetterAstralParty-1.1.3.zip` 전체를 압축 해제하고 `Install.cmd`를 실행하세요. 기존 설정은 유지합니다.
+- 1.1.2 이하 사용자는 이후 자동 업데이트를 이용하기 전에 1.1.3 이상 전체 패키지로 한 번 수동 설치해야 합니다. 게임과 모드 실행기를 종료한 뒤 `BetterAstralParty-1.1.4.zip` 전체를 압축 해제하고 `Install.cmd`를 실행하세요. 기존 설정은 유지합니다.
 - 안정판은 로그인 없이 확인합니다. 업데이트 채널을 바꾸면 해당 채널의 결과를 갱신하며, 다운로드 페이지는 선택한 채널의 GitHub 릴리스 목록을 엽니다.
 - 자동 업데이트: 1.1.3 이상을 설치한 뒤 모드 설정에서 자동 다운로드와 종료 후 적용을 켜세요. 적용 대기가 완료되면 게임과 모드 실행기를 정상 종료하고, 적용 후 직접 다시 실행하세요. 선택한 채널의 저장소만 확인합니다.
 - 수동 업데이트: 게임과 모드 실행기를 종료한 뒤 새 전체 패키지의 `Install.cmd`를 실행하세요. 기존 설정은 유지합니다. 상위 버전의 안정판·베타 전체 패키지로 전환할 수 있으며, 버전 역행은 차단합니다.
@@ -78,6 +78,7 @@ BAP 없이 실행하려면 원래 Steam 항목에서 INT(Global)를 선택하거
 - 계산 문제는 모드 설정에서 진단을 켠 뒤 재현하세요.
 - 진단 ZIP은 패키지의 `Create-Diagnostics.cmd` 또는 게임의 F8 → 일반 설정 → 진단 ZIP 만들기로 생성하세요. 기본 저장 위치는 `%LOCALAPPDATA%/BetterAstralParty/Diagnostics`입니다.
 - 최근 설치·초기 실행·런처·호환성 오류의 상세 본문도 포함합니다. 토큰·개인 경로를 가리며, 용량 제한이나 누락 사유는 ZIP의 `summary.json`에 기록합니다.
+- Steam 관련 설치·제거 오류는 실패 당시의 프로세스 확인 결과와 단계도 수집합니다. 확인하지 못한 정보는 미확인으로 남깁니다.
 - 게임·모드 파일이 일부 없는 경우에도 고정 모드 파일·복구 및 백업 표식의 존재·크기·해시를 `recovery-inventory.json`에 기록합니다. 복구 기록 원문과 인증 저장소는 포함하지 않습니다.
 
 모드 버전, 재현 순서, 스크린샷과 관련 로그 또는 진단 ZIP을 함께 전달하세요. 공유 전 개인정보와 사용자 지정 경로를 확인하세요.
@@ -115,13 +116,13 @@ When a PvP room or match is detected, mod conveniences such as combat recommenda
 
 ### Install and play
 
-1. Download the complete `BetterAstralParty-1.1.3.zip` installation package from GitHub Releases. Source ZIPs are not installation packages.
+1. Download the complete `BetterAstralParty-1.1.4.zip` installation package from GitHub Releases. Source ZIPs are not installation packages.
 2. Launch INT(Global) through the original Steam entry, finish game/data updates, then close it.
 3. Extract the entire ZIP to a separate writable folder and keep all bundled files and folders together. Do not overwrite the game folder directly or run inside the ZIP.
 4. While signed in to Steam, run `Install.cmd` from the extracted folder. In PowerShell, run `.\Install.cmd`. If prompted, select the `Astral Party` folder or its `8vJXnINT` child, as shown by Steam's Installed Files → Browse.
 5. Launch Astral Party - Mod from your Steam library. First-time loader initialization and file downloads may take time and require internet access.
 
-If Steam entry registration or repair prompts you to close processes, review the target list. Entering `y` may force-close the listed Steam games/apps and Steam, so save progress and finish syncing first. A blank response or refusal cancels; only Steam restarts afterward.
+If Steam entry registration or repair prompts you to close processes, you can close Steam normally and enter `r` to recheck. Entering `y` may force-close the listed Steam games/apps and Steam, so save progress and finish syncing first. A blank response or refusal cancels. After a forced shutdown, only Steam restarts. Processes with unverified executable paths are never force-closed.
 
 To play without BAP, select INT(Global) from the original Steam entry or run `AstralParty-Vanilla.cmd` in the game folder. Astral Party - Mod also loads BAP. These entries select BAP only; other BepInEx mods remain available in both. A newly installed shared loader defaults to ON. Close the game before switching and leave the original Steam entry's launch options unchanged.
 
@@ -139,7 +140,7 @@ Use your own Steam screenshot and overlay hotkeys.
 
 ### Updates
 
-- If you use 1.1.2 or earlier, manually install a complete 1.1.3 or newer package once before using future automatic updates. Close the game and mod launcher, extract the entire `BetterAstralParty-1.1.3.zip` package and run `Install.cmd`. Existing settings are preserved.
+- If you use 1.1.2 or earlier, manually install a complete 1.1.3 or newer package once before using future automatic updates. Close the game and mod launcher, extract the entire `BetterAstralParty-1.1.4.zip` package and run `Install.cmd`. Existing settings are preserved.
 - Stable checks do not require login. Switching channels refreshes that channel's result; Download Page opens its GitHub releases listing.
 - Automatic updates: after installing 1.1.3 or newer, enable Auto Download and Apply After Exit in mod settings. Once the update is queued, close the game and mod launcher normally, then restart the game yourself after it finishes. Only the selected channel's repository is checked.
 - Manual updates: close the game and mod launcher, then run `Install.cmd` from the new complete package. Existing settings are preserved. A newer stable or beta complete package can switch the installed channel; downgrades remain blocked.
@@ -162,6 +163,7 @@ After complete removal, run `Install.cmd` from a complete package to reinstall. 
 - Calculation issues: enable diagnostics in mod settings, then reproduce the issue.
 - Create a diagnostics ZIP using the package's `Create-Diagnostics.cmd` or F8 → General → Create Diagnostics ZIP in game. The default output folder is `%LOCALAPPDATA%/BetterAstralParty/Diagnostics`.
 - Recent installation, bootstrap, launcher and compatibility errors include detailed text with tokens and private paths redacted. Size limits and missing evidence are listed in the ZIP's `summary.json`.
+- Steam-related installation and removal errors include the process observations and stage recorded at failure time. Unavailable information remains unknown.
 - Even when game or mod files are missing, `recovery-inventory.json` lists the presence, size and hashes of fixed mod files and recovery/backup markers. Raw recovery records and credential stores are excluded.
 
 Include the mod version, reproduction steps, screenshots and relevant logs or diagnostics ZIP. Review personal information and custom paths before sharing.

@@ -1,4 +1,6 @@
 ﻿# Shared lifecycle for shortcut writes only. Force requires fresh interactive consent.
+. (Join-Path $PSScriptRoot 'steam-shortcut.ps1') -SteamRoot '' -GameRoot ''
+
 function Get-BapSteamTargets([string]$SteamRoot) {
     $steamPath = [IO.Path]::GetFullPath($SteamRoot).TrimEnd('\') + '\'
     $libraries = @($SteamRoot)
@@ -31,7 +33,7 @@ function Get-BapSteamTargets([string]$SteamRoot) {
                 $path.StartsWith($steamPath, [StringComparison]::OrdinalIgnoreCase)
             $game = @($gameDirs.Keys | Where-Object { $path.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
             if ($client -or $game) {
-                [pscustomobject]@{Id=$process.Id; Path=$path; Started=$process.StartTime; Name=$process.ProcessName; Client=$client}
+                [pscustomobject]@{Id=$process.Id; Path=$path; Started=$process.StartTime; Session=$session; Name=$process.ProcessName; Client=$client}
             }
         } catch {
             if ($process.HasExited) { continue }
@@ -43,12 +45,15 @@ function Get-BapSteamTargets([string]$SteamRoot) {
 function Stop-BapVerifiedProcess($Target) {
     $current = Get-Process -Id $Target.Id -ErrorAction SilentlyContinue
     if (!$current) { return }
+    $path = $null; $started = $null; $sameSession = $null
     try {
         if ($current.HasExited) { return }
         $path = $current.Path
         $started = $current.StartTime
-        if (!$path -or !$started -or $path -ne $Target.Path -or $started -ne $Target.Started) {
-            throw "Process identity changed ($($Target.Id)); not terminated. PathAvailable=$([bool]$path); StartAvailable=$([bool]$started); PathMatch=$($path -eq $Target.Path); StartMatch=$($started -eq $Target.Started)."
+        $sameSession = $current.SessionId -eq $Target.Session
+        if (!$path -or !$started -or $path -ne $Target.Path -or $started -ne $Target.Started -or !$sameSession) {
+            $fact = [pscustomobject]@{pid=[int]$Target.Id; sessionMatch=$sameSession; pathAvailable=[bool]$path; pathMatch=$(if ($path) { $path -eq $Target.Path } else { $null }); startAvailable=[bool]$started; startedUtc=$(if ($started) { $started.ToUniversalTime().ToString('o') } else { $null })}
+            throw (New-BapSteamFailure "Process identity changed ($($Target.Id)); not terminated. PathAvailable=$([bool]$path); StartAvailable=$([bool]$started); PathMatch=$($path -eq $Target.Path); StartMatch=$($started -eq $Target.Started)." 'ProcessIdentityChanged' 'ProcessIdentity' ([pscustomobject]@{Facts=@($fact)}))
         }
         Stop-Process -InputObject $current -Force -ErrorAction Stop
         if (!$current.WaitForExit(5000)) { throw "Process did not exit ($($Target.Id))." }
@@ -56,6 +61,12 @@ function Stop-BapVerifiedProcess($Target) {
         # Steam's children may exit after enumeration, during identity reads or termination.
         # Suppress only a confirmed exit on this process object, never an unknown/live PID.
         if ($current.HasExited) { return }
+        if (!$_.Exception.Data.Contains('BapSteamDiagnostic')) {
+            try {
+                $fact = [pscustomobject]@{pid=[int]$Target.Id;sessionMatch=$sameSession;pathAvailable=[bool]$path;pathMatch=$(if ($path) { $path -eq $Target.Path } else { $null });startAvailable=[bool]$started;startedUtc=$(if ($started) { $started.ToUniversalTime().ToString('o') } else { $null })}
+                $_.Exception.Data['BapSteamDiagnostic'] = (New-BapSteamFailure '' 'ProcessTerminationFailed' 'ProcessTermination' ([pscustomobject]@{Facts=@($fact)})).Data['BapSteamDiagnostic']
+            } catch { }
+        }
         throw
     }
 }
@@ -81,7 +92,7 @@ function Get-BapGameTargets([string]$GameRoot) {
         if ((Split-Path -Parent $process.Path) -ne $directory -or
             $process.SessionId -ne [Diagnostics.Process]::GetCurrentProcess().SessionId) { continue }
         if ((Split-Path -Leaf $process.Path) -notin @('AstralParty_INT.exe','AstralParty_CN.exe','BetterAstralParty-Launcher.exe')) { continue }
-        [pscustomobject]@{Id=$process.Id; Path=$process.Path; Started=$process.StartTime; Name=$process.ProcessName}
+        [pscustomobject]@{Id=$process.Id; Path=$process.Path; Started=$process.StartTime; Session=$process.SessionId; Name=$process.ProcessName}
         } catch {
             if ($process.HasExited) { continue }
             throw
@@ -124,17 +135,35 @@ function Stop-BapGame([string]$GameRoot) {
 }
 
 function Stop-BapSteam([string]$SteamRoot, [hashtable]$State) {
-    if (!(Get-Process steam -ErrorAction SilentlyContinue)) { return }
     $exe = Join-Path $SteamRoot 'steam.exe'
-    if (!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Steam executable missing; no changes made.' }
-    $targets = @(Get-BapSteamTargets $SteamRoot)
-    if (!($targets | Where-Object { $_.Client -and $_.Name -eq 'steam' })) { throw 'Cannot verify Steam process ownership; nothing stopped.' }
-    Confirm-BapForce $targets
+    while ($true) {
+        $status = Get-BapSteamStatus $SteamRoot
+        if ($status.State -eq 'Stopped') { return }
+        if ($status.State -in @('Unknown','OtherSession')) {
+            try { Assert-BapSteamStopped $SteamRoot 'ShutdownObservation' } catch { Write-Warning $_.Exception.Message }
+            try { $choice = Read-Host '직접 종료 후 r로 재확인, Enter로 취소 / r: recheck after normal exit, Enter: cancel' }
+            catch { throw (New-BapSteamFailure 'Steam을 정상 종료한 뒤 다시 시도하세요. / Close Steam normally and retry; interactive recheck unavailable.' 'ConsentUnavailable' 'ShutdownConsent' $status) }
+            if ($choice -ne 'r') {
+                $reason = if ($status.State -eq 'Unknown') { 'SteamOwnershipUnknown' } else { 'SteamOtherSession' }
+                throw (New-BapSteamFailure '취소했습니다. Steam 확인 상태를 보존합니다. / Cancelled; unresolved Steam verification retained. Nothing stopped.' $reason 'ShutdownConsent' $status)
+            }
+            continue
+        }
+        if (!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Steam executable missing; no changes made.' }
+        $targets = @(Get-BapSteamTargets $SteamRoot)
+        try { if (Confirm-BapForce $targets -AllowRecheck) { break } }
+        catch {
+            $reason = if ($_.Exception.Message -like '*requires interactive consent*') { 'ConsentUnavailable' } else { 'ConsentCancelled' }
+            throw (New-BapSteamFailure $_.Exception.Message $reason 'ShutdownConsent' $status)
+        }
+    }
     # Do not terminate new games that were absent from the approved list.
+    $status = Get-BapSteamStatus $SteamRoot
+    if ($status.State -in @('Unknown','OtherSession')) { Assert-BapSteamStopped $SteamRoot 'ShutdownRecheck' }
     $fresh = @(Get-BapSteamTargets $SteamRoot)
     foreach ($target in $fresh) {
         if (!($targets | Where-Object { $_.Id -eq $target.Id -and $_.Started -eq $target.Started -and $_.Path -eq $target.Path })) {
-            throw 'Process list changed; retry to confirm the new list. Nothing stopped.'
+            throw (New-BapSteamFailure 'Process list changed; retry to confirm the new list. Nothing stopped.' 'ProcessListChanged' 'ShutdownRecheck' $status)
         }
     }
     $State.Root = $SteamRoot
@@ -143,14 +172,20 @@ function Stop-BapSteam([string]$SteamRoot, [hashtable]$State) {
         Stop-BapVerifiedProcess $target
         if ($target.Client -and $target.Name -eq 'steam') { $State.Restart = $true }
     }
-    $State.Restart = $true
-    if (@(Get-BapSteamTargets $SteamRoot).Count) { throw 'Steam/game processes remain or restarted; installation/removal cancelled.' }
+    # Children may take a moment to finish after the client exits. Never kill a new identity.
+    for ($attempt = 0; $attempt -lt 20; $attempt++) {
+        $status = Get-BapSteamStatus $SteamRoot
+        if ($status.State -eq 'Stopped') { break }
+        Start-Sleep -Milliseconds 100
+    }
+    Assert-BapSteamStopped $SteamRoot 'ShutdownCompletion'
+    if (@(Get-BapSteamTargets $SteamRoot).Count) { throw (New-BapSteamFailure 'Steam game processes remain; operation cancelled.' 'SteamRunning' 'ShutdownCompletion' $status) }
 }
 
 function Resume-BapSteam([hashtable]$State) {
     if (!$State.Restart) { return }
     try {
-        if (!(Get-Process steam -ErrorAction SilentlyContinue)) {
+        if ((Get-BapSteamStatus $State.Root).State -eq 'Stopped') {
             Start-Process -FilePath (Join-Path $State.Root 'steam.exe') -WindowStyle Hidden
         }
     } catch { Write-Warning "Steam을 직접 실행하세요. / Steam restart failed; start Steam manually. $($_.Exception.Message)" }

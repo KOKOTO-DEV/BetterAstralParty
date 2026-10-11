@@ -128,6 +128,10 @@ namespace BetterAstralParty.Diagnostics
             "Folder identity is checked and pinned through shell dispatch; Explorer may resolve the path after return.\r\n" +
             "폴더 열기 호출까지 경로와 디렉터리를 검증·고정합니다. Explorer의 이후 경로 재해석까지 보장하지는 못합니다.\r\n" +
             "Structured session/operation IDs become fresh bundle-local aliases; original IDs are omitted.\r\n" +
+            "Installer Run IDs share those aliases; sourceKind identifies the error source after redaction.\r\n" +
+            "설치 Run ID도 같은 작업 별칭으로 연결하며 sourceKind로 오류 원본 종류를 구분합니다.\r\n" +
+            "Steam failure contexts contain fixed reasons and process identity availability, not paths or accounts.\r\n" +
+            "Steam 실패에는 고정 사유·프로세스 식별 정보의 확인 여부를 남기며 원본 경로·계정은 제외합니다.\r\n" +
             "Unknown structured records are omitted and counted by fixed rejection reason in summary.json.\r\n" +
             "구조화 세션·작업 ID는 ZIP 안에서만 연결되는 새 별칭으로 바꿉니다. 원래 ID는 제외합니다.\r\n" +
             "알 수 없는 구조화 기록은 원문을 제외하고 summary.json의 고정 거부 사유별 개수로 표시합니다.\r\n" +
@@ -146,12 +150,13 @@ namespace BetterAstralParty.Diagnostics
 
         private sealed class Row
         {
-            internal string Source = "", Status = "", Entry = "", Modified = "", Content = "typed-projection";
+            internal string Source = "", Status = "", Entry = "", Modified = "", Content = "typed-projection", SourceKind = "fixed-owned-log";
             internal long Input;
             internal int Output, Redacted, Dropped, Projected, RejectedCandidates;
             internal long ReadBytes;
             internal bool Truncated, Changing;
             internal Dictionary<string, int> Rejections;
+            internal readonly List<string> Operations = new List<string>();
         }
         private sealed class Payload
         {
@@ -204,7 +209,7 @@ namespace BetterAstralParty.Diagnostics
                         "BetterAstralParty-Compatibility.log", "BetterAstralParty-LaunchError.log" };
                     string[] ids = { "game/diagnostics-current", "game/diagnostics-previous", "game/combat-mismatch", "game/combat-mismatch-previous",
                         "game/compatibility", "game/launch-error" };
-                    for (int i = 0; i < paths.Length; ++i) Read(game, paths[i], ids[i], now, rows, payloads, ref raw, ref output);
+                    for (int i = 0; i < paths.Length; ++i) Read(game, paths[i], ids[i], now, rows, payloads, ref raw, ref output, identities);
                     if (gameValid)
                     {
                         Read(game, "BepInEx/LogOutput.log", "loader/log-output", now, rows, payloads, ref raw, ref output);
@@ -226,8 +231,8 @@ namespace BetterAstralParty.Diagnostics
                 else inventory.RootStatus("game", String.IsNullOrWhiteSpace(gameRoot) ? "not-selected" : "unavailable");
             }
             recovery = inventory.Json(gameValid);
-            ReadRecent(localLogs, "local/install-launch", now, rows, payloads, ref raw, ref output);
-            ReadRecent(fallbackLogs, "fallback/install-launch", now, rows, payloads, ref raw, ref output);
+            ReadRecent(localLogs, "local/install-launch", now, rows, payloads, ref raw, ref output, identities);
+            ReadRecent(fallbackLogs, "fallback/install-launch", now, rows, payloads, ref raw, ref output, identities);
             using (var unity = TryRoot(unityLogs, rows, "unity-root"))
             {
                 if (unity != null)
@@ -564,7 +569,7 @@ namespace BetterAstralParty.Diagnostics
                 return BitConverter.ToString(hash.Hash).Replace("-", "");
             }
         }
-        private static void ReadRecent(string path, string id, DateTime now, List<Row> rows, List<Payload> payloads, ref long raw, ref int output)
+        private static void ReadRecent(string path, string id, DateTime now, List<Row> rows, List<Payload> payloads, ref long raw, ref int output, MinimalDiagnosticProjection.ProjectionContext identities)
         {
             using (var root = TryRoot(path, rows, id))
             {
@@ -586,13 +591,15 @@ namespace BetterAstralParty.Diagnostics
                 matches.Sort((a, b) => { int date = b.Value.CompareTo(a.Value); return date == 0 ? StringComparer.Ordinal.Compare(a.Key, b.Key) : date; });
                 if (matches.Count == 0) rows.Add(new Row { Source = id, Status = "no-matching-files" });
                 for (int i = 0; i < Math.Min(matches.Count, MaxRecentPerDirectory); ++i)
-                    Read(root, matches[i].Key, id + "/" + (i + 1).ToString("D2", CultureInfo.InvariantCulture), now, rows, payloads, ref raw, ref output);
+                    Read(root, matches[i].Key, id + "/" + (i + 1).ToString("D2", CultureInfo.InvariantCulture), now, rows, payloads, ref raw, ref output, identities);
                 if (matches.Count > MaxRecentPerDirectory) rows.Add(new Row { Source = id, Status = "recent-file-limit", Input = matches.Count - MaxRecentPerDirectory });
             }
         }
         private static void Read(Fence root, string relative, string id, DateTime now, List<Row> rows, List<Payload> payloads, ref long raw, ref int totalOutput, MinimalDiagnosticProjection.ProjectionContext identities = null)
         {
             var row = new Row { Source = id }; rows.Add(row);
+            if (Names.IsMatch(relative)) row.SourceKind = relative.StartsWith("Launch-", StringComparison.Ordinal) ? "launcher-error"
+                : relative.StartsWith("Bootstrap-", StringComparison.Ordinal) ? "bootstrap-error" : "installer-uninstaller-error";
             try
             {
                 using (var file = root.Open(relative, false))
@@ -634,7 +641,7 @@ namespace BetterAstralParty.Diagnostics
                     else if (id == "game/compatibility" || id == "game/launch-error" || Names.IsMatch(relative))
                     {
                         row.Content = "redacted-error-text";
-                        clean = SanitizeError(text, row, Math.Min(MaxOutputFileBytes, MaxOutputBytes - totalOutput));
+                        clean = SanitizeError(text, row, Math.Min(MaxOutputFileBytes, MaxOutputBytes - totalOutput), identities);
                     }
                     else clean = Sanitize(text, row, Math.Min(MaxOutputFileBytes, MaxOutputBytes - totalOutput));
                     if (clean.Length == 0) { row.Status = row.Truncated ? "output-limit" : "metadata-only-no-allowed-records"; return; }
@@ -882,7 +889,7 @@ namespace BetterAstralParty.Diagnostics
             if (pending != null && !row.Truncated) AppendRecord(result, pending.Render(), row, max, ref count);
             return Utf8.GetBytes(result.ToString());
         }
-        private static readonly Regex ErrorBoundary = Pattern(@"\A(?:BetterAstralParty |BAP-[A-Z-]+|(?:Code|Time|Run|Version|Stage|PowerShell|Package|Game|ErrorType|ErrorId|HResult|Message|Location|Stack|Exception|Allowed|Issues|Warnings):|\s*(?:at (?:System|Microsoft|BetterAstralParty)\.|System\.[A-Za-z.]+Exception\b|--- End of))");
+        private static readonly Regex ErrorBoundary = Pattern(@"\A(?:BetterAstralParty |BAP-[A-Z-]+|(?:Code|Time|Run|Version|Stage|PowerShell|Package|Game|ErrorType|ErrorId|HResult|Message|Location|Stack|Exception|Allowed|Issues|Warnings|SteamDiagnostic|SteamProcess|DiagnosticCoverage):|\s*(?:at (?:System|Microsoft|BetterAstralParty)\.|System\.[A-Za-z.]+Exception\b|--- End of))");
         private static readonly Regex ErrorPath = Pattern(@"(?i)(?:[a-z]:[\\/]|\\\\|%USERPROFILE%[\\/]|/(?:home|Users|tmp|var|mnt|media|opt|data)/)(?:[^\r\n""'<>|]*?\.(?:dll|exe|ps1|cs|cmd|json|hash|log|vdf)(?=[:\s""'<>|,;)]|$)|[^\r\n""'<>|]*)");
         private static readonly Regex ErrorSecret = Pattern(@"(?i)(?:\b(?:authorization|proxy-authorization|cookie|set-cookie|password|passwd|pwd|credential|(?:client[ _-]?)?secret|signature|private[ _-]?key|access[ _-]?key|api[ _-]?key|(?:access|refresh|id|auth)[ _-]?token|token|session[ _-]?id|steam[ _-]?id|user[ _-]?id|account(?:[ _-]?(?:id|name))?|username|nickname|display[ _-]?name|player[ _-]?name|email|chat|ip[ _-]?address|토큰|비밀번호|암호|닉네임|계정|사용자명)\b\s*[""']?\s*[:=]|\b(?:bearer|basic)\s+\S+|gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|AKIA[A-Z0-9]{16}|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|-----BEGIN.*(?:PRIVATE|OPENSSH|PGP).*(?:KEY|BLOCK))");
         private static readonly Regex ErrorPrivate = Pattern(@"(?i)(?:(?:https?|wss?|ftp)://[^\s""'<>]*|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|\b(?:\d{1,3}\.){3}\d{1,3}\b|\b(?:[0-9a-f]{1,4}:){4,}[0-9a-f:]+\b|\b[0-9a-f:]*::[0-9a-f:]+\b|\b[0-9]{17}\b|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b[A-Za-z0-9_+/=-]{64,}\b|(?<=Run: )[0-9a-f]{32}\b)");
@@ -892,7 +899,15 @@ namespace BetterAstralParty.Diagnostics
             var leaf = Regex.Match(match.Value, @"(?:^|[\\/])(?<file>[A-Za-z0-9_.-]+\.(?:dll|exe|ps1|cs|cmd)|catalog_[A-Za-z0-9_.-]+\.(?:json|hash)|shortcuts\.vdf|BetterAstralParty-(?:Compatibility|LaunchError)\.log)\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200));
             return "[path]" + (leaf.Success ? "/" + leaf.Groups["file"].Value : "");
         }
-        private static byte[] SanitizeError(string text, Row row, int max)
+        private static readonly Regex SteamHeader = Pattern(@"\ASteamDiagnostic: schema=1; reason=(?:ProcessObservationUnavailable|SteamOwnershipUnknown|SteamOtherSession|SteamRunning|ProcessListChanged|ProcessIdentityChanged|ProcessTerminationFailed|ConsentCancelled|ConsentUnavailable); phase=(?:ShutdownObservation|ShutdownConsent|ShutdownRecheck|ProcessIdentity|ProcessTermination|ShutdownCompletion|InstallPreflight|UninstallPreflight|ShortcutPreflight|ShortcutCommit|ShortcutRollback|Resume); utc=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z; observedCount=[0-9]{1,10}; omittedCount=[0-9]{1,10}\z");
+        private static readonly Regex SteamProcess = Pattern(@"\ASteamProcess: index=(?:[1-9]|[1-3][0-9]|4[0-8]); pid=[1-9][0-9]{0,9}; sessionMatch=(?:true|false|unknown); pathAvailable=(?:true|false); pathMatch=(?:true|false|unknown); startAvailable=(?:true|false); startedUtc=(?:unknown|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z)\z");
+        private static readonly Regex DiagnosticCoverage = Pattern(@"\ADiagnosticCoverage: (?:exceptionDepth=[0-8]; exceptionChainOmitted=(?:true|false); textTruncated=(?:true|false); steamContext=(?:not-observed|included|context-limit|invalid-context)|log-text-limit)\z");
+        private static void ErrorRejected(Row row, string reason)
+        {
+            row.Dropped++; if (row.Rejections == null) row.Rejections = new Dictionary<string,int>(StringComparer.Ordinal);
+            int count; row.Rejections.TryGetValue(reason, out count); row.Rejections[reason] = count + 1;
+        }
+        private static byte[] SanitizeError(string text, Row row, int max, MinimalDiagnosticProjection.ProjectionContext identities)
         {
             var result = new StringBuilder(); int count = 0; bool continuation = false, keyBlock = false;
             using (var reader = new StringReader(text))
@@ -903,6 +918,21 @@ namespace BetterAstralParty.Diagnostics
                     if (line.Length > 16384) { row.Redacted++; row.Dropped++; row.Truncated = true; continuation = true; continue; }
                     line = Ansi.Replace(line.Normalize(NormalizationForm.FormKC), "");
                     if (ErrorBoundary.IsMatch(line)) continuation = false;
+                    if (!keyBlock && Regex.IsMatch(line, @"\A(?:SteamDiagnostic|SteamProcess|DiagnosticCoverage):", RegexOptions.CultureInvariant))
+                    {
+                        if (!SteamHeader.IsMatch(line) && !SteamProcess.IsMatch(line) && !DiagnosticCoverage.IsMatch(line)) { ErrorRejected(row, "invalid-failure-context"); continuation = true; continue; }
+                        row.Projected++; if (!AppendRecord(result, line, row, max, ref count)) break;
+                        continue;
+                    }
+                    if (!keyBlock && line.StartsWith("Run:", StringComparison.Ordinal))
+                    {
+                        string alias, original = line.Substring(4).Trim();
+                        if (identities == null || !identities.OperationAlias(original, out alias) || !row.Operations.Contains(alias) && row.Operations.Count >= 8)
+                        { ErrorRejected(row, "invalid-or-limited-operation"); continue; }
+                        if (!row.Operations.Contains(alias)) row.Operations.Add(alias);
+                        row.Redacted++; if (!AppendRecord(result, "Run: " + alias, row, max, ref count)) break;
+                        continue;
+                    }
                     if (line.IndexOf("-----BEGIN", StringComparison.OrdinalIgnoreCase) >= 0 && ErrorSecret.IsMatch(line)) keyBlock = true;
                     if (keyBlock || ErrorSecret.IsMatch(line) || continuation)
                     {
@@ -946,7 +976,7 @@ namespace BetterAstralParty.Diagnostics
         {
             string host = Regex.IsMatch(hostVersion ?? "", @"\A[0-9]{1,5}(?:\.[0-9]{1,5}){1,3}\z") ? hostVersion : "unknown";
             string plugin = Version.IsMatch(runningPluginVersion ?? "") ? runningPluginVersion : "unknown";
-            var json = new StringBuilder("{\n\"schema\":1,\"collectorVersion\":\"5\",\"createdUtc\":").Append(Quote(now.ToString("O", CultureInfo.InvariantCulture)));
+            var json = new StringBuilder("{\n\"schema\":1,\"collectorVersion\":\"6\",\"createdUtc\":").Append(Quote(now.ToString("O", CultureInfo.InvariantCulture)));
             json.Append(",\"environment\":{\"osVersion\":").Append(Quote(Environment.OSVersion.Version.ToString()))
                 .Append(",\"runtimeVersion\":").Append(Quote(Environment.Version.ToString())).Append(",\"hostVersion\":").Append(Quote(host))
                 .Append(",\"os64Bit\":").Append(Environment.Is64BitOperatingSystem ? "true" : "false")
@@ -969,6 +999,8 @@ namespace BetterAstralParty.Diagnostics
             {
                 var row = rows[i]; if (i > 0) json.Append(',');
                 json.Append("\n{\"source\":").Append(Quote(row.Source)).Append(",\"status\":").Append(Quote(row.Status))
+                    .Append(",\"sourceKind\":").Append(Quote(row.SourceKind)).Append(",\"operationAliases\":[")
+                    .Append(String.Join(",", row.Operations.ConvertAll(Quote).ToArray())).Append(']')
                     .Append(",\"zipEntry\":").Append(Quote(row.Entry)).Append(",\"contentKind\":").Append(Quote(row.Content)).Append(",\"modifiedUtc\":").Append(Quote(row.Modified))
                     .Append(",\"inputBytes\":").Append(row.Input.ToString(CultureInfo.InvariantCulture)).Append(",\"outputBytes\":").Append(row.Output.ToString(CultureInfo.InvariantCulture))
                     .Append(",\"readBytes\":").Append(row.ReadBytes.ToString(CultureInfo.InvariantCulture)).Append(",\"rejectedCandidates\":").Append(row.RejectedCandidates.ToString(CultureInfo.InvariantCulture))

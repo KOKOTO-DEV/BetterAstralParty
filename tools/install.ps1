@@ -175,12 +175,15 @@ if (Test-Path -LiteralPath (Join-Path $pluginDir 'BetterAstralParty.dll') -PathT
     Write-Host '기존 모드 설치가 확인되었습니다. 사용자 설정을 유지하고 변경 대상 파일을 백업합니다. / Existing installation: settings preserved; target files backed up.'
 }
 
-# Never force-close Steam or an active game. Registration must happen offline.
+# Shortcut writes require an offline client; force-close needs fresh consent.
 $installStage = 'Steam shortcut planning / graceful shutdown'
+$diagnosticPhase='WaitForExit'
+Write-BapInstallerStage $installBundle $diagnosticPhase
 if ($needsShortcut) { Stop-BapSteam $steamRoot $steamSession }
 try {
 if (@(Get-BapGameTargets $GameRoot).Count) { throw 'Game/launcher started; installation cancelled.' }
-if ($needsShortcut -and (Get-Process steam -ErrorAction SilentlyContinue)) { throw 'Steam restarted; installation cancelled.' }
+if ($needsShortcut) { Assert-BapSteamStopped $steamRoot 'InstallPreflight' }
+Write-BapInstallerStage $installBundle $diagnosticPhase 'Completed'
 $diagnosticPhase='Apply'
 Write-BapInstallerStage $installBundle $diagnosticPhase
 $installStage = 'Previous installation backup'

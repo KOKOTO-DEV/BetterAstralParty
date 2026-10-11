@@ -37,6 +37,13 @@ namespace BetterAstralParty.Diagnostics
                 values["related_operation"] = Alias(operations, values["related_operation"]);
                 return true;
             }
+            internal bool OperationAlias(string value, out string alias)
+            {
+                alias = ""; Guid parsed;
+                if (!Guid.TryParseExact(value, "N", out parsed) || value != value.ToLowerInvariant()
+                    || !operations.ContainsKey(value) && operations.Count >= MaxOperations) return false;
+                alias = Alias(operations, value); return true;
+            }
         }
         private static readonly UTF8Encoding Utf8 = new UTF8Encoding(false, true);
         private static readonly string[] Required = "schema,process_session,sequence,utc,elapsed_ms,mod_version,build_id,runtime_version,kind,feature,phase,outcome,code,ui_action,error_site,error_type,operation,related_operation,target_version,update_state,count,secondary_count,native_code,validation_code,apply_code".Split(',');

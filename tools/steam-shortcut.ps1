@@ -1,10 +1,58 @@
 ﻿param(
-    [ValidateSet('Register','Find','Launch','ResolveAccount','PlanRegister','PlanRemove','Remove')][string]$Mode = 'Find',
-    [string]$GameRoot = $PSScriptRoot,
-    [string]$SteamRoot = (Get-ItemProperty 'HKCU:/Software/Valve/Steam').SteamPath,
-    [uint32]$AccountId = 0
+    [Alias('Mode')][ValidateSet('Register','Find','Launch','ResolveAccount','PlanRegister','PlanRemove','Remove')][string]$BapShortcutMode = 'Find',
+    [Alias('GameRoot')][string]$BapShortcutGameRoot = $PSScriptRoot,
+    [Alias('SteamRoot')][string]$BapShortcutSteamRoot = (Get-ItemProperty 'HKCU:/Software/Valve/Steam').SteamPath,
+    [Alias('AccountId')][uint32]$BapShortcutAccountId = 0
 )
-$ErrorActionPreference = 'Stop'
+function Get-BapSteamStatus([string]$SteamRoot) {
+    $prefix = [IO.Path]::GetFullPath($SteamRoot).TrimEnd('\') + '\'
+    $session = [Diagnostics.Process]::GetCurrentProcess().SessionId
+    $facts = @(); $targets = @(); $unknown = $false; $otherSession = $false
+    try { $processes = @(Get-Process -ErrorAction Stop) }
+    catch { throw (New-BapSteamFailure 'Cannot observe Steam processes; nothing changed.' 'ProcessObservationUnavailable' 'ShutdownObservation' $null) }
+    foreach ($process in $processes) {
+        if ($process.ProcessName -notin @('steam','steamwebhelper','GameOverlayUI','steamerrorreporter','steamerrorreporter64')) { continue }
+        $path = $null; $started = $null; $sameSession = $null; $samePath = $null
+        try { if ($process.HasExited) { continue } } catch { }
+        try { $sameSession = $process.SessionId -eq $session } catch { }
+        try { if ($process.Path) { $path = [IO.Path]::GetFullPath($process.Path); $samePath = $path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) } } catch { }
+        try { $started = $process.StartTime } catch { }
+        # An exit during identity reads is not an unknown live process.
+        try { if ($process.HasExited) { continue } } catch { }
+        $facts += [pscustomobject]@{pid=[int]$process.Id; sessionMatch=$sameSession; pathAvailable=[bool]$path; pathMatch=$samePath; startAvailable=[bool]$started; startedUtc=$(if ($started) { $started.ToUniversalTime().ToString('o') } else { $null })}
+        if ($samePath -eq $false) { continue }
+        if (!$path -or $null -eq $sameSession -or !$started) { $unknown = $true; continue }
+        # The selected installation's userdata can be written by another Windows session.
+        if (!$sameSession) { $otherSession = $true; continue }
+        $targets += [pscustomobject]@{Id=$process.Id; Path=$path; Started=$started; Session=$session; Name=$process.ProcessName; Client=$true}
+    }
+    $state = if ($unknown) { 'Unknown' } elseif ($otherSession) { 'OtherSession' } elseif ($targets.Count) { 'Running' } else { 'Stopped' }
+    return [pscustomobject]@{State=$state; Facts=$facts; Targets=$targets}
+}
+
+function New-BapSteamFailure([string]$Message, [string]$Reason, [string]$Phase, $Status) {
+    $failure = [InvalidOperationException]::new($Message)
+    try {
+        $facts = @(); if ($Status) { $facts = @($Status.Facts) }
+        $context = [ordered]@{schema=1; reason=$Reason; phase=$Phase; utc=[datetime]::UtcNow.ToString('o'); observedCount=$facts.Count; omittedCount=[Math]::Max(0, $facts.Count - 48); processes=@($facts | Select-Object -First 48)}
+        $json = $context | ConvertTo-Json -Depth 5 -Compress
+        if ($json.Length -gt 16384) { $context.processes=@(); $context.omittedCount=$facts.Count; $json=$context | ConvertTo-Json -Depth 5 -Compress }
+        $failure.Data['BapSteamDiagnostic'] = $json
+    } catch { } # A diagnostic failure must not change the maintenance decision.
+    return $failure
+}
+
+function Assert-BapSteamStopped([string]$SteamRoot, [string]$Phase = 'ShortcutPreflight') {
+    $status = Get-BapSteamStatus $SteamRoot
+    if ($status.State -eq 'Stopped') { return }
+    $reason = switch ($status.State) { 'Unknown' { 'SteamOwnershipUnknown' } 'OtherSession' { 'SteamOtherSession' } default { 'SteamRunning' } }
+    $message = switch ($status.State) {
+        'Unknown' { 'Steam 프로세스 소유 경로/세션 확인 불가. 정상 종료 후 재확인하세요. / Cannot verify Steam process ownership; close Steam normally and recheck. Nothing changed.' }
+        'OtherSession' { '다른 Windows 세션에서 같은 Steam이 실행 중입니다. 정상 종료 후 재확인하세요. / Selected Steam is running in another Windows session; close it normally and recheck. Nothing changed.' }
+        default { 'Steam이 아직 실행 중입니다. 정상 종료 후 재확인하세요. / Selected Steam is still running; close it normally and recheck. Nothing changed.' }
+    }
+    throw (New-BapSteamFailure $message $reason $Phase $status)
+}
 
 function Resolve-SteamAccount([string]$SteamRoot, [uint32]$RequestedId, [uint32]$ActiveId, [string]$AutoLoginUser) {
     if ([string]::IsNullOrWhiteSpace($SteamRoot) -or !(Test-Path -LiteralPath $SteamRoot -PathType Container)) {
@@ -166,6 +214,11 @@ function Remove-LegacyHero([string]$Config, [uint32]$Id, [string]$GameRoot) {
     }
 }
 
+# Dot-sourcing loads the shared guards only; installed copies need no package-only helper.
+if ($MyInvocation.InvocationName -eq '.') { return }
+$ErrorActionPreference = 'Stop'
+$Mode=$BapShortcutMode; $GameRoot=$BapShortcutGameRoot
+$SteamRoot=$BapShortcutSteamRoot; $AccountId=$BapShortcutAccountId
 $registry = Get-ItemProperty 'HKCU:/Software/Valve/Steam' -ErrorAction SilentlyContinue
 $active = Get-ItemProperty 'HKCU:/Software/Valve/Steam/ActiveProcess' -ErrorAction SilentlyContinue
 $resolved = Resolve-SteamAccount $SteamRoot $AccountId ([uint32]$active.ActiveUser) $registry.AutoLoginUser
@@ -206,7 +259,7 @@ if ($Mode -in @('Find','Launch')) {
     Start-Process "steam://rungameid/$gameId" -WindowStyle Hidden
     return
 }
-if (Get-Process steam -ErrorAction SilentlyContinue) { throw 'Close Steam normally before registering the mod shortcut.' }
+Assert-BapSteamStopped $SteamRoot 'ShortcutPreflight'
 if ($Mode -eq 'Remove') {
     foreach ($key in @($items.Keys)) {
         if ([object]::ReferenceEquals($items[$key], $owned[0])) { $items.Remove($key); break }
@@ -241,7 +294,7 @@ $directory = Split-Path -Parent $path
 if (!(Test-Path -LiteralPath $directory)) { throw 'Steam account configuration directory missing.' }
 $temp = $path + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
 [IO.File]::WriteAllBytes($temp, $bytes)
-if (Get-Process steam -ErrorAction SilentlyContinue) { throw "Steam restarted; registration cancelled. Temporary file: $temp" }
+Assert-BapSteamStopped $SteamRoot 'ShortcutCommit'
 if ($null -ne $original) {
     if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) -ne [Convert]::ToBase64String($original)) {
         throw 'Steam shortcuts changed during registration; cancelled.'
