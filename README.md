@@ -8,6 +8,8 @@ Astral Party 국제판 INT(Global)의 PvE 정보 표시와 판단을 돕는 한�
 
 [최신 안정판 다운로드](https://github.com/TSM701/BetterAstralParty/releases/latest)
 
+[베타 다운로드](https://github.com/TSM701/BetterAstralPartyBeta/releases)
+
 ### 주요 기능
 
 - 공개 정보를 사용하는 PvE 전투 추천과 카드 평가
@@ -29,7 +31,7 @@ PvP 방·경기가 감지되면 전투 추천·카드 정렬·추가 정보 표�
 
 ### 설치와 실행
 
-1. GitHub Releases에서 `BetterAstralParty-1.1.2.zip` 전체 설치 ZIP을 받으세요. `-update.zip`과 Source code ZIP은 최초 설치용이 아닙니다.
+1. GitHub Releases에서 `BetterAstralParty-1.1.3.zip` 전체 설치 ZIP을 받으세요. 소스 ZIP은 설치용이 아닙니다.
 2. 원래 Steam 항목으로 INT(Global)를 한 번 실행해 게임 업데이트와 데이터 다운로드를 마친 뒤 종료하세요.
 3. 쓰기 가능한 별도 폴더에 ZIP 전체를 압축 해제하고, 동봉된 파일과 폴더를 함께 유지하세요. 게임 폴더 위에 직접 덮어쓰거나 ZIP 내부에서 실행하지 마세요.
 4. Steam에 로그인한 상태에서 압축을 푼 폴더의 `Install.cmd`를 실행하세요. PowerShell에서는 `.\Install.cmd`를 실행합니다. 경로를 묻는 경우 Steam의 설치된 파일 → 찾아보기로 확인한 `Astral Party` 폴더 또는 `8vJXnINT` 하위 폴더를 선택하세요.
@@ -37,7 +39,7 @@ PvP 방·경기가 감지되면 전투 추천·카드 정렬·추가 정보 표�
 
 Steam 항목 등록·수정 때문에 종료 안내가 나오면 대상 목록을 확인하세요. `y`를 입력하면 표시된 Steam 게임·앱과 Steam이 강제 종료될 수 있으므로 진행 상황을 저장하고 동기화를 마치세요. 빈 입력이나 거절은 취소하며, 작업 후 Steam만 다시 실행합니다.
 
-바닐라는 원래 Steam 항목에서 INT(Global)를 선택하거나 게임 폴더의 `AstralParty-Vanilla.cmd`로 실행하세요. 전환 전 게임을 종료하고, 원래 Steam 항목의 실행 옵션은 변경하지 마세요.
+BAP 없이 실행하려면 원래 Steam 항목에서 INT(Global)를 선택하거나 게임 폴더의 `AstralParty-Vanilla.cmd`를 실행하세요. Astral Party - Mod에서는 BAP를 함께 불러옵니다. 두 실행 항목은 BAP 적용 여부만 구분하며 다른 BepInEx 모드는 그대로 유지합니다. 새 공용 로더는 ON으로 설치됩니다. 전환 전 게임을 종료하고, 원래 Steam 항목의 실행 옵션은 변경하지 마세요.
 
 ### 설정
 
@@ -53,16 +55,19 @@ Steam 항목 등록·수정 때문에 종료 안내가 나오면 대상 목록�
 
 ### 업데이트
 
+- 1.1.2 이하 사용자는 이후 자동 업데이트를 이용하기 전에 1.1.3 이상 전체 패키지로 한 번 수동 설치해야 합니다. 게임과 모드 실행기를 종료한 뒤 `BetterAstralParty-1.1.3.zip` 전체를 압축 해제하고 `Install.cmd`를 실행하세요. 기존 설정은 유지합니다.
 - 안정판은 로그인 없이 확인합니다. 업데이트 채널을 바꾸면 해당 채널의 결과를 갱신하며, 다운로드 페이지는 선택한 채널의 GitHub 릴리스 목록을 엽니다.
-- 자동 업데이트: 모드 설정에서 자동 다운로드와 종료 후 적용을 켜세요. 적용 대기가 완료되면 게임과 모드 실행기를 정상 종료하고, 적용 후 직접 다시 실행하세요.
-- 수동 업데이트: 게임과 모드 실행기를 종료한 뒤 새 전체 패키지의 `Install.cmd`를 실행하세요. 기존 설정은 유지합니다. 설치된 버전보다 낮은 버전으로 덮어쓰는 것은 차단합니다.
+- 자동 업데이트: 1.1.3 이상을 설치한 뒤 모드 설정에서 자동 다운로드와 종료 후 적용을 켜세요. 적용 대기가 완료되면 게임과 모드 실행기를 정상 종료하고, 적용 후 직접 다시 실행하세요. 선택한 채널의 저장소만 확인합니다.
+- 수동 업데이트: 게임과 모드 실행기를 종료한 뒤 새 전체 패키지의 `Install.cmd`를 실행하세요. 기존 설정은 유지합니다. 상위 버전의 안정판·베타 전체 패키지로 전환할 수 있으며, 버전 역행은 차단합니다.
+- Mod 실행 시 공용 로더가 OFF라면 안내창 없이 ON으로 전환하며, 다른 모드 파일과 나머지 로더 설정은 보존합니다. 변경 전 원본은 `BepInEx/config/BetterAstralParty.loader-before-*.bak`에 보관됩니다.
+- 이전에 받은 패키지의 설치·제거 도구는 자동 업데이트로 바뀌지 않으므로 최신 전체 패키지를 사용하세요.
 - 비공개 Beta 인증: 모드 설정의 업데이트 인증을 선택하고, Windows 보안 입력 창에 저장소 읽기 권한이 있는 PAT을 입력하세요. 인증은 현재 Windows 사용자의 자격 증명 관리자에 저장돼 재실행 후에도 유지됩니다. 업데이트 로그아웃을 선택하면 삭제하며, 만료·철회된 토큰은 재인증하세요. 브라우저 로그인과 모드의 업데이트 인증은 별개입니다.
 
 ### 제거
 
-게임과 모드 실행기를 종료한 뒤 전체 패키지의 `Uninstall.cmd`를 실행하고 제거 목록을 확인하세요. 모드 파일과 설정은 `%LOCALAPPDATA%/BetterAstralParty/Backups`에 백업한 뒤 제거합니다. 최신 전체 패키지 사용을 권장하며, 지원되는 이전 패키지의 제거 도구도 사용할 수 있습니다.
+게임과 모드 실행기를 종료한 뒤 최신 전체 패키지의 `Uninstall.cmd`를 실행하고 제거 목록을 확인하세요. 모드 파일과 설정은 `%LOCALAPPDATA%/BetterAstralParty/Backups`에 백업한 뒤 제거합니다.
 
-공용 BepInEx 파일, 다른 모드, 한국어 패치와 원래 Steam 항목은 유지합니다. 로더 설정은 설치 전 상태로 복원합니다. 구버전 기록이 없어 선택을 묻는 경우 `1`은 다른 BepInEx 모드 실행을 유지하고, `2`는 모든 BepInEx 모드를 끕니다. 빈 입력은 취소합니다.
+공용 BepInEx 파일과 현재 로더 설정, 다른 모드, 한국어 패치와 원래 Steam 항목은 유지합니다. 다른 모드를 BAP 설치 이후에 추가한 경우에도 해당 모드와 로더 설정을 그대로 둡니다.
 
 완전 제거 후에는 전체 패키지의 `Install.cmd`로 재설치할 수 있습니다. 복구 안내가 나오면 로그와 백업을 보관하고 표시된 절차를 따르세요.
 
@@ -73,6 +78,7 @@ Steam 항목 등록·수정 때문에 종료 안내가 나오면 대상 목록�
 - 계산 문제는 모드 설정에서 진단을 켠 뒤 재현하세요.
 - 진단 ZIP은 패키지의 `Create-Diagnostics.cmd` 또는 게임의 F8 → 일반 설정 → 진단 ZIP 만들기로 생성하세요. 기본 저장 위치는 `%LOCALAPPDATA%/BetterAstralParty/Diagnostics`입니다.
 - 최근 설치·초기 실행·런처·호환성 오류의 상세 본문도 포함합니다. 토큰·개인 경로를 가리며, 용량 제한이나 누락 사유는 ZIP의 `summary.json`에 기록합니다.
+- 게임·모드 파일이 일부 없는 경우에도 고정 모드 파일·복구 및 백업 표식의 존재·크기·해시를 `recovery-inventory.json`에 기록합니다. 복구 기록 원문과 인증 저장소는 포함하지 않습니다.
 
 모드 버전, 재현 순서, 스크린샷과 관련 로그 또는 진단 ZIP을 함께 전달하세요. 공유 전 개인정보와 사용자 지정 경로를 확인하세요.
 
@@ -85,6 +91,8 @@ BetterAstralParty 자체 코드는 MIT 라이선스로 제공합니다. 외부 �
 A Korean/English quality-of-life mod for Astral Party INT(Global), focused on PvE information and decision support.
 
 [Download the latest stable release](https://github.com/TSM701/BetterAstralParty/releases/latest)
+
+[Download the beta](https://github.com/TSM701/BetterAstralPartyBeta/releases)
 
 ### Features
 
@@ -107,7 +115,7 @@ When a PvP room or match is detected, mod conveniences such as combat recommenda
 
 ### Install and play
 
-1. Download the complete `BetterAstralParty-1.1.2.zip` installation package from GitHub Releases. Neither `-update.zip` nor Source code ZIPs are first-install packages.
+1. Download the complete `BetterAstralParty-1.1.3.zip` installation package from GitHub Releases. Source ZIPs are not installation packages.
 2. Launch INT(Global) through the original Steam entry, finish game/data updates, then close it.
 3. Extract the entire ZIP to a separate writable folder and keep all bundled files and folders together. Do not overwrite the game folder directly or run inside the ZIP.
 4. While signed in to Steam, run `Install.cmd` from the extracted folder. In PowerShell, run `.\Install.cmd`. If prompted, select the `Astral Party` folder or its `8vJXnINT` child, as shown by Steam's Installed Files → Browse.
@@ -115,7 +123,7 @@ When a PvP room or match is detected, mod conveniences such as combat recommenda
 
 If Steam entry registration or repair prompts you to close processes, review the target list. Entering `y` may force-close the listed Steam games/apps and Steam, so save progress and finish syncing first. A blank response or refusal cancels; only Steam restarts afterward.
 
-For vanilla, select INT(Global) from the original Steam entry or run `AstralParty-Vanilla.cmd` in the game folder. Close the game before switching and leave the original Steam entry's launch options unchanged.
+To play without BAP, select INT(Global) from the original Steam entry or run `AstralParty-Vanilla.cmd` in the game folder. Astral Party - Mod also loads BAP. These entries select BAP only; other BepInEx mods remain available in both. A newly installed shared loader defaults to ON. Close the game before switching and leave the original Steam entry's launch options unchanged.
 
 ### Settings
 
@@ -131,16 +139,19 @@ Use your own Steam screenshot and overlay hotkeys.
 
 ### Updates
 
+- If you use 1.1.2 or earlier, manually install a complete 1.1.3 or newer package once before using future automatic updates. Close the game and mod launcher, extract the entire `BetterAstralParty-1.1.3.zip` package and run `Install.cmd`. Existing settings are preserved.
 - Stable checks do not require login. Switching channels refreshes that channel's result; Download Page opens its GitHub releases listing.
-- Automatic updates: enable Auto Download and Apply After Exit in mod settings. Once the update is queued, close the game and mod launcher normally, then restart the game yourself after it finishes.
-- Manual updates: close the game and mod launcher, then run `Install.cmd` from the new complete package. Existing settings are preserved. In-place downgrades are blocked.
+- Automatic updates: after installing 1.1.3 or newer, enable Auto Download and Apply After Exit in mod settings. Once the update is queued, close the game and mod launcher normally, then restart the game yourself after it finishes. Only the selected channel's repository is checked.
+- Manual updates: close the game and mod launcher, then run `Install.cmd` from the new complete package. Existing settings are preserved. A newer stable or beta complete package can switch the installed channel; downgrades remain blocked.
+- A Mod launch enables the shared loader without a prompt if it is OFF, preserving other mods' files and all remaining loader settings. The original configuration is retained at `BepInEx/config/BetterAstralParty.loader-before-*.bak`.
+- Automatic updates do not replace installation/removal tools in previously downloaded packages; use the latest complete package for maintenance.
 - Private Beta authentication: select Connect Updates in mod settings and enter a PAT with repository read access in the secure Windows prompt. Windows Credential Manager saves it for the current Windows user across restarts. Sign Out of Updates deletes it; sign in again if the token expires or is revoked. Browser login and the mod's update authentication are separate.
 
 ### Uninstall
 
-Close the game and mod launcher, run `Uninstall.cmd` from a complete package and review the removal list. Mod files and settings are backed up under `%LOCALAPPDATA%/BetterAstralParty/Backups` before removal. Use the latest complete package when possible; supported older uninstallers can also be used.
+Close the game and mod launcher, run `Uninstall.cmd` from the latest complete package and review the removal list. Mod files and settings are backed up under `%LOCALAPPDATA%/BetterAstralParty/Backups` before removal.
 
-Shared BepInEx files, other mods, Korean patches and the original Steam entry are preserved. The loader setting is restored to its pre-installation state. If a legacy installation has no record and prompts for a choice, `1` keeps other BepInEx mods running and `2` disables all BepInEx mods. A blank response cancels.
+Shared BepInEx files and current loader settings, other mods, Korean patches and the original Steam entry are preserved. Mods added after BAP installation and their loader settings are also left unchanged.
 
 After complete removal, run `Install.cmd` from a complete package to reinstall. If recovery is required, keep logs and backups and follow the displayed procedure.
 
@@ -151,6 +162,7 @@ After complete removal, run `Install.cmd` from a complete package to reinstall. 
 - Calculation issues: enable diagnostics in mod settings, then reproduce the issue.
 - Create a diagnostics ZIP using the package's `Create-Diagnostics.cmd` or F8 → General → Create Diagnostics ZIP in game. The default output folder is `%LOCALAPPDATA%/BetterAstralParty/Diagnostics`.
 - Recent installation, bootstrap, launcher and compatibility errors include detailed text with tokens and private paths redacted. Size limits and missing evidence are listed in the ZIP's `summary.json`.
+- Even when game or mod files are missing, `recovery-inventory.json` lists the presence, size and hashes of fixed mod files and recovery/backup markers. Raw recovery records and credential stores are excluded.
 
 Include the mod version, reproduction steps, screenshots and relevant logs or diagnostics ZIP. Review personal information and custom paths before sharing.
 

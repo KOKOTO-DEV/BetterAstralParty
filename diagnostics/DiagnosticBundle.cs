@@ -9,6 +9,7 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Win32.SafeHandles;
@@ -69,8 +70,11 @@ namespace BetterAstralParty.Diagnostics
         public const int MaxInputFileBytes = 2 * 1024 * 1024, MaxInputBytes = 8 * 1024 * 1024;
         public const int MaxOutputFileBytes = 512 * 1024, MaxOutputBytes = 4 * 1024 * 1024;
         public const int MaxFiles = 24, MaxDirectoryEntries = 512, MaxRecentPerDirectory = 8, RecentDays = 7;
+        public const int MaxCatalogs = 64, MaxCatalogFileBytes = 32 * 1024 * 1024, MaxCatalogBytes = 64 * 1024 * 1024;
+        private const int MaxRecoveryDirectories = 64, MaxRecoveryFileBytes = 64 * 1024 * 1024, MaxRecoveryBytes = 64 * 1024 * 1024;
         private static readonly UTF8Encoding Utf8 = new UTF8Encoding(false, true);
         private static readonly Regex Names = Pattern(@"\A(?:(?:Launch|Bootstrap)-[0-9a-f]{32}|BetterAstralParty-InstallError-[0-9]{8}-[0-9]{6}-[0-9a-f]{8})\.log\z");
+        private static readonly Regex CatalogNames = Pattern(@"(?i)^catalog.*\.(json|hash)$");
         private static readonly Regex Secret = Pattern(@"(?i)(?:\b(?:authorization|proxy-authorization|bearer|basic|cookie|set-cookie|password|passwd|pwd|credential|(?:client[ _-]?)?secret|signature|private[ _-]?key|access[ _-]?key|api[ _-]?key|(?:access|refresh|id|auth)[ _-]?token|token|session[ _-]?id|steam[ _-]?id|user[ _-]?id|account(?:[ _-]?(?:id|name))?|username|nickname|display[ _-]?name|player[ _-]?name|email|chat|ip[ _-]?address)\b|토큰|비밀번호|암호|닉네임|계정|사용자명|인증[ _-]?헤더|비밀[ _-]?키|서명[ _-]?키|gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|AKIA[A-Z0-9]{16}|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|-----BEGIN.*(?:PRIVATE|OPENSSH|PGP).*(?:KEY|BLOCK))");
         private static readonly Regex Private = Pattern(@"(?i)(?:[a-z]:[\\/]|\\\\|(?:https?|wss?|ftp)://|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|\b(?:\d{1,3}\.){3}\d{1,3}\b|\b(?:[0-9a-f]{1,4}:){4,}[0-9a-f:]+\b|\b[0-9a-f:]*::[0-9a-f:]+\b|\b[0-9]{17}\b|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|(?:^|[\s\""'=])/(?:home|Users|tmp|var|mnt|media|opt|data)/|\b[A-Za-z0-9_+/=-]{32,}\b)");
         private static readonly Regex Boundary = Pattern(@"\A(?:\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}|\[(?:Info|Warning|Error|Debug|Fatal|Message)[ :\]])");
@@ -93,10 +97,18 @@ namespace BetterAstralParty.Diagnostics
             "설치·초기 실행·런처·호환성 오류는 민감정보를 가린 본문을 포함합니다.\r\n" +
             "DLL 이름·오류 코드·단계·stack을 남기며, 로컬·임시 폴더별 최근 오류 최대 8개입니다.\r\n" +
             "BepInEx·Unity 로그는 존재·크기·수정 시각만 포함하며 내용을 읽지 않습니다.\r\n" +
+            "catalog-inventory.json: top-level com.unity.addressables catalog*.json/hash filenames, sizes and SHA-256 only.\r\n" +
+            "catalog-inventory.json에는 com.unity.addressables 최상위 catalog*.json/hash의 파일명·크기·SHA-256만 포함합니다. 원본 내용은 제외합니다.\r\n" +
+            "Catalog hashing: 32 MiB/file, 64 MiB total; up to 64 names after scanning at most 512 entries.\r\n" +
+            "카탈로그 해시: 파일당 32 MiB/총 64 MiB, 최대 512개 항목을 확인해 파일명 최대 64개를 기록합니다. 제한·변경·읽기 실패 사유도 기록합니다.\r\n" +
+            "recovery-inventory.json: fixed mod files, recovery markers and this installation's backup markers: presence, size and SHA-256 only.\r\n" +
+            "recovery-inventory.json은 고정 모드 파일·복구 표식·해당 설치의 백업 표식에 대해 존재·크기·SHA-256만 기록합니다.\r\n" +
+            "Missing game/loader files do not prevent this inventory; it is not installation or recovery verification.\r\n" +
+            "게임·로더 파일이 일부 없어도 목록을 수집합니다. 이 목록은 설치 정상 판정이나 복구 검증이 아닙니다.\r\n" +
             "Fixed paths and typed fields only; card/hand/chat payload, unknown text, full configs, credential stores,\r\n" +
-            "updater state, dumps and arbitrary files are excluded. General runtime logs remain typed projections.\r\n" +
+            "raw updater/backup state, dumps and arbitrary files are excluded. General runtime logs remain typed projections.\r\n" +
             "고정 경로와 허용 필드만 요약합니다. 카드·손패·채팅·알 수 없는 텍스트·전체 설정·인증 저장소·\r\n" +
-            "업데이트 상태·덤프·임의 파일은 제외합니다. 일반 게임 진단은 허용 필드만 요약합니다.\r\n" +
+            "업데이트·백업 상태 원문·덤프·임의 파일은 제외합니다. 일반 게임 진단은 허용 필드만 요약합니다.\r\n" +
             "Legacy errors retain fixed feature/subfeature/error-class/site codes. Unsupported values become Unknown.\r\n" +
             "Only up to 16 exact owned stack anchors are mapped; missing/async/native sites may remain Unknown.\r\n" +
             "기존 오류의 고정 기능·분류·위치 코드를 남깁니다. 미등록 값과 확인하지 못한 위치는 Unknown입니다.\r\n" +
@@ -124,7 +136,7 @@ namespace BetterAstralParty.Diagnostics
             "Missing means not observed, not success. Writer health/session correlation and cross-source ordering\r\n" +
             "are unknown for legacy sources. Structured relations are bundle-local; sequence is not causal proof.\r\n" +
             "Historical WriterHealth is not live health; snapshots are not new actions/errors.\r\n" +
-            "HP agreement does not prove the full model. No updater recovery state is included.\r\n" +
+            "HP agreement does not prove the full model. Recovery-marker observations are unauthenticated; raw state is excluded.\r\n" +
             "누락은 관측되지 않았다는 뜻입니다. 정상 판정이 아닙니다. writer 상태·세션 연결·파일 간 순서는\r\n" +
             "legacy에서 확인하지 못합니다. 구조화 기록의 연결은 ZIP 안에 한정하며 순번은 인과 증명이 아닙니다.\r\n" +
             "과거 writer 관측은 현재 상태가 아니며 snapshot은 새 동작·오류가 아닙니다. HP 일치가 전체 모델\r\n" +
@@ -164,7 +176,8 @@ namespace BetterAstralParty.Diagnostics
             var rows = new List<Row>(); var payloads = new List<Payload>();
             long raw = 0; int output = 0; DateTime now = DateTime.UtcNow;
             var identities = new MinimalDiagnosticProjection.ProjectionContext();
-            string version = "unknown"; bool gameValid = false;
+            string version = "unknown"; bool gameValid = false; string recovery;
+            var inventory = new RecoveryInventory();
             using (var game = TryRoot(gameRoot, rows, "game-root"))
             {
                 if (game != null)
@@ -175,23 +188,26 @@ namespace BetterAstralParty.Diagnostics
                         using (var data = game.Open("AstralParty_INT_Data", true)) { gameValid = true; }
                     }
                     catch { rows.Add(new Row { Source = "game-root", Status = "invalid-game-markers" }); }
+                    inventory.Game(game);
+                    inventory.Backups(game, localLogs);
+                    // Fixed owned logs stay useful after game-marker loss; their projection and quotas are unchanged.
+                    string[] minimal = { "BepInEx/BetterAstralParty-Diagnostics/minimal-v1/events-current.jsonl",
+                        "BepInEx/BetterAstralParty-Diagnostics/minimal-v1/events-previous.jsonl",
+                        "BepInEx/BetterAstralParty-Diagnostics/minimal-v1/helper/events-current.jsonl",
+                        "BepInEx/BetterAstralParty-Diagnostics/minimal-v1/helper/events-previous.jsonl",
+                        "BepInEx/BetterAstralParty-Diagnostics/minimal-v1/installer/events-current.jsonl",
+                        "BepInEx/BetterAstralParty-Diagnostics/minimal-v1/installer/events-previous.jsonl" };
+                    string[] minimalIds = { "game/minimal-current", "game/minimal-previous", "game/minimal-helper-current", "game/minimal-helper-previous", "game/minimal-installer-current", "game/minimal-installer-previous" };
+                    for (int i = 0; i < minimal.Length; ++i) Read(game, minimal[i], minimalIds[i], now, rows, payloads, ref raw, ref output, identities);
+                    string[] paths = { "BepInEx/BetterAstralParty-Diagnostics/current.log", "BepInEx/BetterAstralParty-Diagnostics/previous.log",
+                        "BepInEx/BetterAstralParty-Diagnostics/combat-mismatch.log", "BepInEx/BetterAstralParty-Diagnostics/combat-mismatch-previous.log",
+                        "BetterAstralParty-Compatibility.log", "BetterAstralParty-LaunchError.log" };
+                    string[] ids = { "game/diagnostics-current", "game/diagnostics-previous", "game/combat-mismatch", "game/combat-mismatch-previous",
+                        "game/compatibility", "game/launch-error" };
+                    for (int i = 0; i < paths.Length; ++i) Read(game, paths[i], ids[i], now, rows, payloads, ref raw, ref output);
                     if (gameValid)
                     {
-                        // Minimal sources take priority inside unchanged per-file and total quotas.
-                        string[] minimal = { "BepInEx/BetterAstralParty-Diagnostics/minimal-v1/events-current.jsonl",
-                            "BepInEx/BetterAstralParty-Diagnostics/minimal-v1/events-previous.jsonl",
-                            "BepInEx/BetterAstralParty-Diagnostics/minimal-v1/helper/events-current.jsonl",
-                            "BepInEx/BetterAstralParty-Diagnostics/minimal-v1/helper/events-previous.jsonl",
-                            "BepInEx/BetterAstralParty-Diagnostics/minimal-v1/installer/events-current.jsonl",
-                            "BepInEx/BetterAstralParty-Diagnostics/minimal-v1/installer/events-previous.jsonl" };
-                        string[] minimalIds = { "game/minimal-current", "game/minimal-previous", "game/minimal-helper-current", "game/minimal-helper-previous", "game/minimal-installer-current", "game/minimal-installer-previous" };
-                        for (int i = 0; i < minimal.Length; ++i) Read(game, minimal[i], minimalIds[i], now, rows, payloads, ref raw, ref output, identities);
-                        string[] paths = { "BepInEx/BetterAstralParty-Diagnostics/current.log", "BepInEx/BetterAstralParty-Diagnostics/previous.log",
-                            "BepInEx/BetterAstralParty-Diagnostics/combat-mismatch.log", "BepInEx/BetterAstralParty-Diagnostics/combat-mismatch-previous.log",
-                            "BetterAstralParty-Compatibility.log", "BetterAstralParty-LaunchError.log", "BepInEx/LogOutput.log" };
-                        string[] ids = { "game/diagnostics-current", "game/diagnostics-previous", "game/combat-mismatch", "game/combat-mismatch-previous",
-                            "game/compatibility", "game/launch-error", "loader/log-output" };
-                        for (int i = 0; i < paths.Length; ++i) Read(game, paths[i], ids[i], now, rows, payloads, ref raw, ref output);
+                        Read(game, "BepInEx/LogOutput.log", "loader/log-output", now, rows, payloads, ref raw, ref output);
                         try
                         {
                             using (var dll = game.Open("BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll", false, true))
@@ -207,7 +223,9 @@ namespace BetterAstralParty.Diagnostics
                         catch { rows.Add(new Row { Source = "plugin-version", Status = "unavailable" }); }
                     }
                 }
+                else inventory.RootStatus("game", String.IsNullOrWhiteSpace(gameRoot) ? "not-selected" : "unavailable");
             }
+            recovery = inventory.Json(gameValid);
             ReadRecent(localLogs, "local/install-launch", now, rows, payloads, ref raw, ref output);
             ReadRecent(fallbackLogs, "fallback/install-launch", now, rows, payloads, ref raw, ref output);
             using (var unity = TryRoot(unityLogs, rows, "unity-root"))
@@ -218,6 +236,7 @@ namespace BetterAstralParty.Diagnostics
                     Read(unity, "Player-prev.log", "unity/player-previous", now, rows, payloads, ref raw, ref output);
                 }
             }
+            string catalogs = CatalogInventory(unityLogs);
             byte[] zip;
             using (var memory = new MemoryStream())
             {
@@ -225,6 +244,8 @@ namespace BetterAstralParty.Diagnostics
                 {
                     Add(archive, "README.txt", Utf8.GetBytes(Guide));
                     Add(archive, "summary.json", Utf8.GetBytes(Summary(rows, gameValid, version, hostVersion, runningPluginVersion, now, liveHealth, identities)));
+                    Add(archive, "catalog-inventory.json", Utf8.GetBytes(catalogs));
+                    Add(archive, "recovery-inventory.json", Utf8.GetBytes(recovery));
                     foreach (var payload in payloads) Add(archive, payload.Row.Entry, payload.Bytes);
                 }
                 zip = memory.ToArray();
@@ -299,6 +320,249 @@ namespace BetterAstralParty.Diagnostics
             catch (DirectoryNotFoundException) { rows.Add(new Row { Source = id, Status = "missing" }); }
             catch { rows.Add(new Row { Source = id, Status = "unsafe-or-unreadable" }); }
             return null;
+        }
+        private static string CatalogInventory(string unityLogs)
+        {
+            var files = new List<string>();
+            string status = "not-selected"; int scanned = 0, matches = 0; long reserved = 0;
+            if (!String.IsNullOrWhiteSpace(unityLogs))
+            {
+                try
+                {
+                    using (var root = new Fence(Path.Combine(unityLogs, "com.unity.addressables")))
+                    {
+                        status = "complete"; var names = new List<string>();
+                        try
+                        {
+                            foreach (string candidate in Directory.EnumerateFileSystemEntries(root.Root))
+                            {
+                                if (scanned == MaxDirectoryEntries) { status = "directory-scan-limit"; break; }
+                                scanned++; string name = Path.GetFileName(candidate);
+                                if (CatalogNames.IsMatch(name)) { Utf8.GetByteCount(name); names.Add(name); }
+                            }
+                        }
+                        catch { status = "enumeration-unavailable"; }
+                        names.Sort(StringComparer.Ordinal); matches = names.Count;
+                        for (int i = 0; i < Math.Min(names.Count, MaxCatalogs); ++i)
+                        {
+                            string reason = "hashed", hash = null; long? size = null;
+                            try
+                            {
+                                using (var file = root.Open(names[i], false, true))
+                                {
+                                    size = file.Length;
+                                    if (file.Length > MaxCatalogFileBytes) reason = "file-size-limit";
+                                    else if (file.Length > MaxCatalogBytes - reserved) reason = "hash-budget-limit";
+                                    else
+                                    {
+                                        // Reserve failed attempts too; a growing file never expands the read budget.
+                                        reserved += file.Length; hash = CatalogHash(file);
+                                        if (hash == null) reason = "changed-during-hash";
+                                    }
+                                }
+                            }
+                            catch (FileNotFoundException) { reason = "missing"; }
+                            catch (DirectoryNotFoundException) { reason = "missing"; }
+                            catch (UnauthorizedAccessException) { reason = "unsafe-or-denied"; }
+                            catch (ArgumentException) { reason = "unsafe-path"; }
+                            catch (IOException) { reason = "locked-or-unreadable"; }
+                            catch { reason = "hash-unavailable"; }
+                            if (reason != "hashed") hash = null;
+                            files.Add("{\"filename\":" + Quote(names[i]) + ",\"sizeBytes\":"
+                                + (size.HasValue ? size.Value.ToString(CultureInfo.InvariantCulture) : "null")
+                                + ",\"sha256\":" + (hash == null ? "null" : Quote(hash)) + ",\"status\":" + Quote(reason) + "}");
+                        }
+                    }
+                }
+                catch (FileNotFoundException) { status = "missing"; }
+                catch (DirectoryNotFoundException) { status = "missing"; }
+                catch { status = "unsafe-or-unreadable"; }
+            }
+            return "{\"schema\":1,\"source\":\"unity/com.unity.addressables\",\"contentsIncluded\":false,\"status\":" + Quote(status)
+                + ",\"scannedEntries\":" + scanned.ToString(CultureInfo.InvariantCulture)
+                + ",\"matchedEntries\":" + matches.ToString(CultureInfo.InvariantCulture)
+                + ",\"fileLimitOmitted\":" + Math.Max(0, matches - MaxCatalogs).ToString(CultureInfo.InvariantCulture)
+                + ",\"hashReservedBytes\":" + reserved.ToString(CultureInfo.InvariantCulture)
+                + ",\"limits\":{\"directoryEntries\":512,\"files\":64,\"fileBytes\":33554432,\"hashTotalBytes\":67108864},\"files\":["
+                + String.Join(",", files.ToArray()) + "]}\n";
+        }
+        // Metadata only: observations never authenticate journals or authorize recovery.
+        private sealed class RecoveryInventory
+        {
+            private readonly List<string> files = new List<string>(), roots = new List<string>(), observations = new List<string>();
+            private long reserved; private int atomicCount;
+            private static readonly Regex WorkNames = Pattern(@"\Abap-(helper|helperbridge|helperauto|wholeintent|txn|stage)-[a-f0-9]{32}\z");
+            private static readonly Regex GenerationNames = Pattern(@"\A[a-f0-9]{32}\z");
+            private static readonly Regex RootMarkers = Pattern(@"\A(?:bap-transition-|BetterAstralParty\.reinstall\.completed-|BetterAstralParty\.update\.version\.uninstalled-)[a-f0-9]{32}\z");
+            private static readonly Regex AtomicMarkers = Pattern(@"\A(plan|descriptor|signature|image|receipt|committed)-pending-[a-f0-9]{32}\z");
+            internal void RootStatus(string id, string status) { roots.Add("{\"source\":" + Quote(id) + ",\"status\":" + Quote(status) + "}"); }
+            private void Observe(string id, string code, bool? potential)
+            {
+                observations.Add("{\"source\":" + Quote(id) + ",\"code\":" + Quote(code) + ",\"potentialBlocker\":"
+                    + (potential.HasValue ? (potential.Value ? "true" : "false") : "null") + "}");
+            }
+            private bool? File(Fence root, string relative, string id)
+            {
+                string status = "hashed", hash = null; long? size = null; bool? present = null;
+                try
+                {
+                    using (var file = root.Open(relative, false, true))
+                    {
+                        present = true; size = file.Length;
+                        if (file.Length > MaxRecoveryFileBytes) status = "file-size-limit";
+                        else if (file.Length > MaxRecoveryBytes - reserved) status = "hash-budget-limit";
+                        else
+                        {
+                            reserved += file.Length; hash = CatalogHash(file);
+                            if (hash == null) status = "changed-during-hash";
+                        }
+                    }
+                }
+                catch (FileNotFoundException) { status = "missing"; present = false; }
+                catch (DirectoryNotFoundException) { status = "missing"; present = false; }
+                catch (UnauthorizedAccessException) { status = "unsafe-or-denied"; }
+                catch (ArgumentException) { status = "unsafe-path"; }
+                catch (IOException) { status = "locked-or-unreadable"; }
+                catch { status = "hash-unavailable"; }
+                files.Add("{\"source\":" + Quote(id) + ",\"present\":" + (present.HasValue ? (present.Value ? "true" : "false") : "null")
+                    + ",\"sizeBytes\":" + (size.HasValue ? size.Value.ToString(CultureInfo.InvariantCulture) : "null")
+                    + ",\"sha256\":" + (hash == null ? "null" : Quote(hash)) + ",\"status\":" + Quote(status) + "}");
+                return present;
+            }
+            private List<string> Scan(Fence root, Regex pattern, string id)
+            {
+                var names = new List<string>(); int scanned = 0, matched = 0; string status = "complete";
+                try
+                {
+                    foreach (string candidate in Directory.EnumerateFileSystemEntries(root.Root))
+                    {
+                        if (scanned == MaxDirectoryEntries) { status = "directory-scan-limit"; break; }
+                        scanned++; string name = Path.GetFileName(candidate);
+                        if (pattern.IsMatch(name)) names.Add(name);
+                    }
+                }
+                catch { status = "enumeration-unavailable"; }
+                names.Sort(StringComparer.Ordinal); matched = names.Count;
+                if (matched > MaxRecoveryDirectories) names.RemoveRange(MaxRecoveryDirectories, matched - MaxRecoveryDirectories);
+                roots.Add("{\"source\":" + Quote(id) + ",\"status\":" + Quote(status) + ",\"scannedEntries\":" + scanned
+                    + ",\"matchedEntries\":" + matched + ",\"limitOmitted\":" + Math.Max(0, matched - MaxRecoveryDirectories) + "}");
+                return names;
+            }
+            internal void Game(Fence game)
+            {
+                RootStatus("game", "pinned-selected-root");
+                string[] owned = { "AstralParty-Vanilla.cmd", "BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll", "BetterAstralParty-Launcher.exe",
+                    "BetterAstralParty-Mod.cmd", "BetterAstralParty-Steam.ps1", "BetterAstralParty.compatibility.json", "check-compatibility.ps1", "steam-shortcut.ps1",
+                    "BetterAstralParty-UpdateHelper.exe", "BetterAstralParty.helper.receipt", "BetterAstralParty.install.json", "BetterAstralParty.update.version", "BetterAstralParty.update.lock" };
+                foreach (string path in owned) File(game, path, "game/" + path);
+                string[] pending = { "BetterAstralParty.reinstall.pending", "BetterAstralParty.update.failure", "BetterAstralParty.update.operation",
+                    "BetterAstralParty.update.preferences-failed", "BetterAstralParty.update.failed" };
+                foreach (string path in pending) Observe("game/" + path, "root-marker-observed", File(game, path, "game/" + path));
+                int alias = 0;
+                foreach (string name in Scan(game, WorkNames, "game/work-directories"))
+                {
+                    string kind = WorkNames.Match(name).Groups[1].Value, id = "game/" + kind + "/" + (++alias).ToString("D2", CultureInfo.InvariantCulture);
+                    try
+                    {
+                        using (var held = game.Open(name, true))
+                        using (var work = new Fence(Path.Combine(game.Root, name)))
+                        {
+                            string[] markers = kind == "stage" ? new[] { "descriptor.bin", "signature.bin", "key-id.bin", "handoff.ticket", "helper.owner", "helper.ready", "helper.cancel", "helper.attempt", "helper.recovery" }
+                                : kind == "wholeintent" ? new[] { "plan", "target-receipt", "committed", "cancelled" }
+                                : kind == "txn" ? new[] { "plan", "commit-intent", "committed", "rolled-back" }
+                                : kind == "helper" ? new[] { "plan", "descriptor", "signature", "receipt", "committed" }
+                                : new[] { "plan", "committed" };
+                            bool? plan = null, terminal = false;
+                            foreach (string marker in markers)
+                            {
+                                bool? present = File(work, marker, id + "/" + marker);
+                                if (marker == "plan" || marker == "handoff.ticket") plan = present;
+                                if (marker == "committed" || marker == "cancelled" || marker == "rolled-back")
+                                    terminal = terminal == true || present == true ? true : (terminal.HasValue && present.HasValue ? (bool?)false : null);
+                            }
+                            Observe(id, "work-marker-observed", plan == false || terminal == true ? (bool?)false : (plan == true && terminal == false ? (bool?)true : null));
+                            if (kind == "helper" || kind == "helperauto" || kind == "helperbridge")
+                            {
+                                int tempAlias = 0;
+                                foreach (string temp in Scan(work, AtomicMarkers, id + "/atomic-markers"))
+                                {
+                                    if (atomicCount == MaxRecoveryDirectories) { RootStatus(id + "/atomic-markers", "file-limit"); break; }
+                                    atomicCount++;
+                                    Observe(id + "/atomic-marker/" + (++tempAlias).ToString("D2", CultureInfo.InvariantCulture), "unpublished-marker-observed",
+                                        File(work, temp, id + "/" + AtomicMarkers.Match(temp).Groups[1].Value + "-pending/" + tempAlias.ToString("D2", CultureInfo.InvariantCulture)));
+                                }
+                            }
+                        }
+                    }
+                    catch { RootStatus(id, "unsafe-or-unreadable"); Observe(id, "work-unavailable", null); }
+                }
+                alias = 0;
+                foreach (string name in Scan(game, RootMarkers, "game/generation-markers"))
+                {
+                    string kind = name.StartsWith("bap-transition-", StringComparison.Ordinal) ? "transition" : name.StartsWith("BetterAstralParty.reinstall.", StringComparison.Ordinal) ? "reinstall-completed" : "archived-version";
+                    string id = "game/" + kind + "/" + (++alias).ToString("D2", CultureInfo.InvariantCulture);
+                    bool? present = File(game, name, id);
+                    if (kind == "transition") Observe(id, "transition-marker-observed", present);
+                }
+            }
+            internal void Backups(Fence game, string localLogs)
+            {
+                if (String.IsNullOrWhiteSpace(localLogs)) { RootStatus("installer-backups", "not-selected"); return; }
+                try
+                {
+                    string logs = Path.GetFullPath(localLogs).TrimEnd(Path.DirectorySeparatorChar), parent = Path.GetDirectoryName(logs);
+                    if (!String.Equals(Path.GetFileName(logs), "Logs", StringComparison.OrdinalIgnoreCase)
+                        || !String.Equals(Path.GetFileName(parent), "BetterAstralParty", StringComparison.OrdinalIgnoreCase))
+                    { RootStatus("installer-backups", "not-known-log-root"); return; }
+                    string key;
+                    using (var sha = SHA256.Create()) key = BitConverter.ToString(sha.ComputeHash(Utf8.GetBytes(game.Root.TrimEnd('\\').ToLowerInvariant()))).Replace("-", "");
+                    using (var backups = new Fence(Path.Combine(parent, "Backups", key)))
+                    {
+                        RootStatus("installer-backups", "pinned-target-root");
+                        Observe("installer-backups/pending.json", "installer-pending-marker-observed", File(backups, "pending.json", "installer-backups/pending.json"));
+                        File(backups, "pending.json.lock", "installer-backups/pending.json.lock");
+                        int alias = 0;
+                        foreach (string name in Scan(backups, GenerationNames, "installer-backups/generations"))
+                        {
+                            string id = "installer-backups/generation/" + (++alias).ToString("D2", CultureInfo.InvariantCulture);
+                            try { using (var held = backups.Open(name, true)) File(backups, name + "/completed.json", id + "/completed.json"); }
+                            catch { RootStatus(id, "unsafe-or-unreadable"); }
+                        }
+                    }
+                }
+                catch (FileNotFoundException) { RootStatus("installer-backups", "missing"); }
+                catch (DirectoryNotFoundException) { RootStatus("installer-backups", "missing"); }
+                catch { RootStatus("installer-backups", "unsafe-or-unreadable"); }
+            }
+            internal string Json(bool gameValid)
+            {
+                return "{\"schema\":1,\"contentsIncluded\":false,\"installationVerified\":false,\"gameMarkersValidated\":" + (gameValid ? "true" : "false")
+                    + ",\"recoveryAuthenticated\":false,\"identities\":\"bundle-local-aliases\",\"observationsAreDiagnosis\":false,\"hashReservedBytes\":" + reserved
+                    + ",\"limits\":{\"directoryEntries\":512,\"matchingEntriesPerDirectory\":64,\"atomicFilesTotal\":64,\"fileBytes\":67108864,\"hashTotalBytes\":67108864},\"roots\":["
+                    + String.Join(",", roots.ToArray()) + "],\"files\":[" + String.Join(",", files.ToArray()) + "],\"observations\":[" + String.Join(",", observations.ToArray()) + "]}\n";
+            }
+        }
+        private static string CatalogHash(Opened file)
+        {
+            var buffer = new byte[16384]; long read = 0;
+            using (var hash = SHA256.Create())
+            {
+                while (read < file.Length)
+                {
+                    int count = file.Stream.Read(buffer, 0, (int)Math.Min(buffer.Length, file.Length - read));
+                    if (count == 0) return null;
+                    hash.TransformBlock(buffer, 0, count, buffer, 0); read += count;
+                }
+                hash.TransformFinalBlock(buffer, 0, 0);
+                FileInformation after; var path = new StringBuilder(512);
+                uint pathLength = GetFinalPathNameByHandleW(file.Stream.SafeFileHandle, path, 512, 0);
+                if (!GetFileInformationByHandle(file.Stream.SafeFileHandle, out after)
+                    || ((long)after.SizeHigh << 32 | after.SizeLow) != file.Length
+                    || DateTime.FromFileTimeUtc(((long)after.WriteHigh << 32) | after.WriteLow) != file.Modified
+                    || (after.Attributes & 0x410) != 0 || after.Links != 1 || pathLength == 0 || pathLength >= 512
+                    || !String.Equals(path.ToString(), @"\\?\" + file.FullPath, StringComparison.OrdinalIgnoreCase)) return null;
+                return BitConverter.ToString(hash.Hash).Replace("-", "");
+            }
         }
         private static void ReadRecent(string path, string id, DateTime now, List<Row> rows, List<Payload> payloads, ref long raw, ref int output)
         {
@@ -667,13 +931,22 @@ namespace BetterAstralParty.Diagnostics
         }
         private static string Quote(string value)
         {
-            return "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n") + "\"";
+            var json = new StringBuilder("\"");
+            foreach (char c in value)
+            {
+                if (c == '\\' || c == '"') json.Append('\\').Append(c);
+                else if (c == '\r') json.Append("\\r");
+                else if (c == '\n') json.Append("\\n");
+                else if (c < 32) json.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
+                else json.Append(c);
+            }
+            return json.Append('"').ToString();
         }
         private static string Summary(List<Row> rows, bool gameValid, string fileProductVersion, string hostVersion, string runningPluginVersion, DateTime now, LiveDiagnosticHealth liveHealth, MinimalDiagnosticProjection.ProjectionContext identities)
         {
             string host = Regex.IsMatch(hostVersion ?? "", @"\A[0-9]{1,5}(?:\.[0-9]{1,5}){1,3}\z") ? hostVersion : "unknown";
             string plugin = Version.IsMatch(runningPluginVersion ?? "") ? runningPluginVersion : "unknown";
-            var json = new StringBuilder("{\n\"schema\":1,\"collectorVersion\":\"3\",\"createdUtc\":").Append(Quote(now.ToString("O", CultureInfo.InvariantCulture)));
+            var json = new StringBuilder("{\n\"schema\":1,\"collectorVersion\":\"5\",\"createdUtc\":").Append(Quote(now.ToString("O", CultureInfo.InvariantCulture)));
             json.Append(",\"environment\":{\"osVersion\":").Append(Quote(Environment.OSVersion.Version.ToString()))
                 .Append(",\"runtimeVersion\":").Append(Quote(Environment.Version.ToString())).Append(",\"hostVersion\":").Append(Quote(host))
                 .Append(",\"os64Bit\":").Append(Environment.Is64BitOperatingSystem ? "true" : "false")
@@ -683,6 +956,8 @@ namespace BetterAstralParty.Diagnostics
                 .Append(",\"pluginFileProductVersion\":").Append(Quote(fileProductVersion)).Append("},\n")
                 .Append("\"limits\":{\"recentDays\":7,\"maxLogs\":24,\"inputFileBytes\":2097152,\"inputTotalBytes\":8388608,\"outputFileBytes\":524288,\"outputTotalBytes\":4194304},\n")
                 .Append("\"privacy\":{\"configurationIncluded\":false,\"rawDumpsIncluded\":false,\"credentialStoresAccessed\":false,\"gamePayloadIncluded\":false,\"uploaded\":false,\"completeAnonymisation\":false},\n")
+                .Append("\"catalogInventory\":{\"zipEntry\":\"catalog-inventory.json\",\"contentKind\":\"filename-size-sha256-only\",\"contentsIncluded\":false,\"logQuotaShared\":false},\n")
+                .Append("\"recoveryInventory\":{\"zipEntry\":\"recovery-inventory.json\",\"contentKind\":\"presence-size-sha256-only\",\"contentsIncluded\":false,\"authenticated\":false,\"logQuotaShared\":false},\n")
                 .Append("\"structuredProjection\":{\"schema\":\"bap.minimal-diagnostic/v1\",\"identities\":\"bundle-local-aliases\",\"maxSessionAliases\":64,\"maxOperationAliases\":512,\"unknownEvents\":\"omitted-and-counted-by-fixed-reason\",\"snapshotsAreNewEvents\":false},\n")
                 .Append("\"scope\":{\"writerHealth\":\"unknown\",\"requestedRecording\":\"unknown\",\"sessionCorrelation\":\"not-reconstructed\",\"crossSourceOrder\":\"unknown\",\"combatVerification\":\"public-hp-comparison-only\",\"missingMeans\":\"not-observed\",\"engineLogs\":\"metadata-only\"},\n\"files\":[");
             // Only a live owner snapshot can provide current writer health; historical logs cannot.

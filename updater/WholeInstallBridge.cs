@@ -13,7 +13,11 @@ namespace BetterAstralParty.Updating {
     internal static class WholeInstallBridge {
         private const string OriginalDevImage = "816BBDE3EE27DD306F7266D4D9CCCC0B143D9A7FA34B1FDF7B46C73E8651BE31";
         private const string OriginalDevPlugin = "283D554024FE664B8FB67BACD7777C3BDF5C0CB777332D731BCDD8BA98ABFDA1";
-        private static ApplySafetyException Bad() { return new ApplySafetyException(ApplyFailure.RecoveryRequired); }
+        private static ApplySafetyException Bad(string? reason=null) {
+            var error=new ApplySafetyException(ApplyFailure.RecoveryRequired);
+            if(reason!=null)error.Data["BapRecoveryReason"]=reason;
+            return error;
+        }
         private static WindowsFileFence.FileLease? Maybe(WindowsFileFence f, string p, bool mutable = false) {
             try { return f.OpenFile(p, mutable); } catch (ApplySafetyException e) when(e.NativeError == 2) { return null; }
         }
@@ -75,6 +79,19 @@ namespace BetterAstralParty.Updating {
             public void Dispose() {for(var i=_leases.Count-1;i>=0;i--)_leases[i].Dispose();_leases.Clear();Source.Dispose();}
         }
         internal static void ValidateInputs(string root,string package,string version) { using(var input=new Inputs(root,package,version)) { } }
+        internal static void ValidatePartialRemoval(string root) {
+            using(var fence=new WindowsFileFence(root))using(var file=fence.OpenFile(InstallReceipt.Path)) {
+                UpdateLaunchGate.Check(fence);UpdateTransaction.ReadHighWater(fence);
+                var receipt=InstallReceipt.Parse(UpdateTicket.Read(file,16384));
+                foreach(var name in InstallReceipt.Owned)using(var owned=Maybe(fence,name))if(owned==null ? name==UpdateTrust.PluginPath : owned.Hash()!=receipt.Files[name])throw Bad();
+                using(var plugin=fence.OpenFile(UpdateTrust.PluginPath)) {
+                    var current=InstalledPluginMetadata.Read(UpdateTicket.Read(plugin,UpdateTrust.MaxFileBytes));
+                    var state=receipt.Channels;
+                    if(state==null || state.Root!=fence.RootIdentity.Text || state.ActiveVersion!=current.Version || state.ActiveRepositoryId!=ReleaseFeedPolicy.For(state.ActiveChannel).RepositoryId || current.UpdateProtocol!=2 || current.SettingsSchema!=1)throw Bad();
+                }
+                if(HelperDelivery.Fingerprint(fence,UpdateTrust.Production())==null)throw Bad();
+            }
+        }
         private sealed class Observation {
             internal string Nonce="00000000000000000000000000000000",Root="",Plugin="-",Receipt="-",Image="-\t-",HelperReceipt="-\t-",Water="-\t-",Update="",Helper="",Mode="";
             internal string Text() {return "BetterAstralParty.WholeObservation/v1\nroot="+Root+"\nplugin="+Plugin+"\nreceipt="+Receipt+"\nimage="+Image+"\nhelper-receipt="+HelperReceipt+"\nwater="+Water+"\nupdate="+Update+"\nhelper="+Helper+"\nmode="+Mode+"\nnonce="+Nonce+"\n";}
@@ -91,15 +108,16 @@ namespace BetterAstralParty.Updating {
         private static void MatchInputs(WindowsFileFence f,Inputs input,Observation o) {if(o.Root!=f.RootIdentity.Text || o.Update!=input.Update.DescriptorSha256 || o.Helper!=input.Helper.DescriptorHash)throw Bad();}
         private static void OtherState(WindowsFileFence f,List<MigrationPlan> pending) {
             UpdateLaunchGate.AssertNoReinstall(f);
+            if(AutomaticHelperUpgrade.Pending(f))throw Bad("HelperUpgradePending");
             UpdateFaults.Read(f); // Retain valid failure latch; malformed evidence is a blocker.
-            if(UpdateFaults.ReadFile(f,UpdateFaults.OperationPath)!=null)throw Bad();
-            foreach(var e in UpdateRecovery.Scan(f))if(e.Pending)throw Bad(); // Old signed helper must first finish old journals.
+            if(UpdateFaults.ReadFile(f,UpdateFaults.OperationPath)!=null)throw Bad("UpdateOperationPending");
+            foreach(var e in UpdateRecovery.Scan(f))if(e.Pending)throw Bad("UpdateTransactionPending"); // Old signed helper must first finish old journals.
             if(HelperDelivery.PendingInstall(f)) {
-                if(pending.Count!=1)throw Bad();
+                if(pending.Count!=1)throw Bad("HelperInstallPending");
                 foreach(var d in Directory.GetDirectories(f.Root,"bap-helper-*",SearchOption.TopDirectoryOnly)) {
                     var work=Path.GetFileName(d);f.AssertPrivateDirectory(work);
                     using(var plan=Maybe(f,work+"/plan"))using(var committed=Maybe(f,work+"/committed"))
-                        if(plan!=null && committed==null && work!=pending[0].HelperWork)throw Bad();
+                        if(plan!=null && committed==null && work!=pending[0].HelperWork)throw Bad("HelperInstallConflict");
                 }
             }
         }
@@ -122,12 +140,11 @@ namespace BetterAstralParty.Updating {
             if(state==null) {if(incoming.Channel!="Beta")throw Bad();return;}
             if(state.Root!=root || state.ActiveVersion!=currentVersion || state.ActiveRepositoryId!=ReleaseFeedPolicy.For(state.ActiveChannel).RepositoryId)throw Bad();
             if(state.ActiveChannel==incoming.Channel)return;
-            // Only the first, strictly newer public GA whole package may adopt a known Beta installation.
-            if(state.ActiveChannel!="Beta" || incoming.Channel!="Stable" || state.BetaRepositoryId!=ReleaseFeedPolicy.BetaRepositoryId
-                || state.StableRepositoryId!=0 || state.StableVersion!=null || state.StableDescriptor!="-"
-                || currentProtocol!=2 || currentSettings!=1 || incoming.Protocol!=2 || incoming.SettingsSchema!=1 || incoming.Files.Count!=8
-                || incoming.Repository!=ReleaseFeedPolicy.StableRepository || incoming.RepositoryId!=ReleaseFeedPolicy.StableRepositoryId
-                || incoming.ReleaseId<=0 || incoming.AssetId<=0 || UpdateVersion.Parse(incoming.Version).IsPrerelease)throw Bad();
+            // The chosen, signed whole package may switch channels only by advancing the installed version.
+            var feed=ReleaseFeedPolicy.For(incoming.Channel);
+            if(currentProtocol!=2 || currentSettings!=1 || incoming.Protocol!=2 || incoming.SettingsSchema!=1 || incoming.Files.Count!=8
+                || incoming.Repository!=feed.Repository || incoming.RepositoryId!=feed.RepositoryId
+                || !(incoming.ReleaseId>0 && incoming.AssetId>0 || incoming.ReleaseId==0 && incoming.AssetId==0))throw Bad();
             var next=UpdateVersion.Parse(incoming.Version);
             if(next.CompareTo(UpdateVersion.Parse(currentVersion))<=0 || high!=null && next.CompareTo(UpdateVersion.Parse(high))<=0)
                 throw new UpdateValidationException(UpdateFailure.NotNewer);
@@ -143,7 +160,10 @@ namespace BetterAstralParty.Updating {
                     o.Receipt=receiptFile?.Hash()??"-";
                     if(receiptFile!=null) {
                         var receipt=InstallReceipt.Parse(UpdateTicket.Read(receiptFile,16384));
-                        foreach(var name in InstallReceipt.Owned)using(var file=f.OpenFile(name))if(file.Hash()!=receipt.Files[name])throw Bad();
+                        foreach(var name in InstallReceipt.Owned)using(var file=Maybe(f,name)) {
+                            if(file==null && name==UpdateTrust.PluginPath)throw Bad("OwnedPluginMissing");
+                            if(file!=null && file.Hash()!=receipt.Files[name])throw Bad("OwnedFileChanged");
+                        }
                         using(var plugin=f.OpenFile(UpdateTrust.PluginPath)) {
                             o.Plugin=plugin.Hash();var current=InstalledPluginMetadata.Read(UpdateTicket.Read(plugin,UpdateTrust.MaxFileBytes));var cmp=UpdateVersion.Parse(version).CompareTo(UpdateVersion.Parse(current.Version));
                             if(cmp<0)throw new UpdateValidationException(UpdateFailure.NotNewer);
@@ -151,8 +171,8 @@ namespace BetterAstralParty.Updating {
                             ValidateWholeChannel(receipt.Channels,o.Root,current.Version,current.UpdateProtocol,current.SettingsSchema,input.Update,high);
                         }
                     } else {
-                        foreach(var name in InstallReceipt.Owned)using(var file=Maybe(f,name))if(file!=null)throw Bad();
-                        if(high!=null)throw Bad();
+                        foreach(var name in InstallReceipt.Owned)using(var file=Maybe(f,name))if(file!=null)throw Bad("InstallReceiptMissing");
+                        if(high!=null)throw Bad("RemovalProofRequired");
                     }
                 }
                 if(pending.Count!=0) {
@@ -161,7 +181,7 @@ namespace BetterAstralParty.Updating {
                 }
                 using(var image=Maybe(f,HelperDescriptor.Image))o.Image=Slot(image);
                 using(var receipt=Maybe(f,HelperDelivery.Receipt))o.HelperReceipt=Slot(receipt);
-                if(o.Image=="-\t-" && o.HelperReceipt=="-\t-")o.Mode="Fresh";
+                if(o.Image=="-\t-" && o.HelperReceipt=="-\t-"){if(o.Receipt!="-")throw Bad("HelperEvidenceMissing");o.Mode="Fresh";}
                 else if(o.Image.EndsWith("\t"+OriginalDevImage,StringComparison.Ordinal) && o.Plugin==OriginalDevPlugin && o.Receipt!="-" && o.HelperReceipt=="-\t-" && Directory.GetDirectories(f.Root,"bap-helper-*",SearchOption.TopDirectoryOnly).Length==0)o.Mode="OriginalDev";
                 else {
                     var actual=HelperDelivery.Fingerprint(f,UpdateTrust.Production());if(actual==null || o.Receipt=="-")throw Bad();
@@ -348,7 +368,7 @@ namespace BetterAstralParty.Updating {
             using(var image=Maybe(f,HelperDescriptor.Image))using(var helper=Maybe(f,HelperDelivery.Receipt))using(var receipt=Maybe(f,InstallReceipt.Path)){
                 if(Slot(image)!=o.Image || Slot(helper)!=o.HelperReceipt || (receipt?.Hash()??"-")!=o.Receipt)throw Bad();
                 if(receipt==null){foreach(var name in InstallReceipt.Owned)using(var file=Maybe(f,name))if(file!=null)throw Bad();}
-                else {var prior=InstallReceipt.Parse(UpdateTicket.Read(receipt,16384));foreach(var name in InstallReceipt.Owned)using(var file=f.OpenFile(name))if(file.Hash()!=prior.Files[name])throw Bad();}
+                else {var prior=InstallReceipt.Parse(UpdateTicket.Read(receipt,16384));foreach(var name in InstallReceipt.Owned)using(var file=Maybe(f,name))if(file==null ? name==UpdateTrust.PluginPath : file.Hash()!=prior.Files[name])throw Bad();}
             }
         }
         private static void RetireIntent(WindowsFileFence f,WholeIntent intent,bool committed){

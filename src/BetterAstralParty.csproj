@@ -23,7 +23,9 @@
     <Compile Include="..\updater\ChannelTransitionIntent.cs" Link="Updating\ChannelTransitionIntent.cs" />
     <Compile Include="..\updater\UpdateTransaction.cs" Link="Updating\UpdateTransaction.cs" />
     <Compile Include="..\updater\UpdateCompatibility.cs" Link="Updating\UpdateCompatibility.cs" />
+    <Compile Include="..\updater\CatalogInventory.cs" Link="Updating\CatalogInventory.cs" />
     <Compile Include="..\updater\UpdateLaunchGate.cs" Link="Updating\UpdateLaunchGate.cs" />
+    <Compile Include="..\updater\AutomaticHelperUpgrade.cs" Link="Updating\AutomaticHelperUpgrade.cs" />
     <Compile Include="..\updater\UpdateVersion.cs" Link="Updating\UpdateVersion.cs" />
     <Compile Include="..\updater\UpdateTrust.cs" Link="Updating\UpdateTrust.cs" />
     <Compile Include="..\updater\ProductionUpdateKeys.cs" Link="Updating\ProductionUpdateKeys.cs" />

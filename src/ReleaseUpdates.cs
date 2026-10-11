@@ -477,7 +477,7 @@ internal sealed class ReleaseUpdates : IDisposable
         if (!item.TryGetProperty("id", out var release) || release.ValueKind != JsonValueKind.Number || !release.TryGetInt64(out var releaseId) || releaseId <= 0
             || !item.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array || assets.GetArrayLength() > 16) return result;
         var assetVersion = tag.StartsWith('v') ? tag[1..] : tag;
-        var names = new[] { "BetterAstralParty-" + assetVersion + "-update.zip", "BetterAstralParty.update.manifest", "BetterAstralParty.update.signature" };
+        var names = new[] { "BetterAstralParty-" + assetVersion + "-update.zip", ReleaseFeedPolicy.UpdateManifestAsset, ReleaseFeedPolicy.UpdateSignatureAsset };
         var ids = new HashSet<long>();
         foreach (var asset in assets.EnumerateArray()) {
             if (asset.ValueKind != JsonValueKind.Object || !asset.TryGetProperty("name", out var name) || name.ValueKind != JsonValueKind.String) continue;

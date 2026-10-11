@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Version>1.0.0-rc.2</Version>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../diagnostics/DiagnosticBundle.cs" Link="DiagnosticBundle.cs" />
+    <Compile Include="../diagnostics/MinimalDiagnosticProjection.cs" Link="MinimalDiagnosticProjection.cs" />
+  </ItemGroup>
+</Project>

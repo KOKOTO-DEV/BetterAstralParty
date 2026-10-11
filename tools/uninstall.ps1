@@ -1,5 +1,5 @@
 ﻿[CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='High')]
-param([string]$GameRoot, [ValidateSet('Recorded','Enabled','Disabled')][string]$RestoreLoader = 'Recorded', [uint32]$AccountId = 0)
+param([string]$GameRoot, [ValidateSet('Keep','Recorded','Enabled','Disabled')][string]$RestoreLoader = 'Keep', [uint32]$AccountId = 0)
 $ErrorActionPreference = 'Stop'
 $env:PSModulePath = Join-Path $PSHOME 'Modules'
 $root = Split-Path -Parent $PSScriptRoot
@@ -70,8 +70,8 @@ try {
         } catch { $receipt = $null; $hashes = @{}; Write-Warning '설치 기록을 확인할 수 없어 원본을 보존합니다. / Invalid receipt retained; checking individual files.' }
     }
     $declaredLauncherHash = $hashes['BetterAstralParty-Launcher.exe']
-    if ($declaredLauncherHash -and (!(Test-Path -LiteralPath $installedLauncher -PathType Leaf) -or (Get-UninstallHash $installedLauncher) -cne $declaredLauncherHash)) {
-        throw '런처가 없거나 설치 기록과 다릅니다. 검토된 복구가 필요합니다. / Missing or modified installed launcher; reviewed recovery required before removal.'
+    if ($declaredLauncherHash -and (Test-Path -LiteralPath $installedLauncher -PathType Leaf) -and (Get-UninstallHash $installedLauncher) -cne $declaredLauncherHash) {
+        throw '런처가 설치 기록과 다릅니다. 검토된 복구가 필요합니다. / Modified installed launcher; reviewed recovery required before removal.'
     }
     if (!$declaredLauncherHash -and (Test-Path -LiteralPath $installedLauncher -PathType Leaf) -and (Get-UninstallHash $installedLauncher) -cne $externalBundle.Expected['BetterAstralParty-Launcher.exe']) {
         throw '출처를 확인할 수 없는 런처를 보존하고 중단합니다. / Unrecognized installed launcher retained; recovery review required.'
@@ -92,7 +92,7 @@ try {
             @{ Path=$name; Exclusive=$true }
         }
     )
-    $targets = @(); $plannedHashes = @{}; $keptReceiptFile = $false
+    $targets = @(); $missingOwned = @(); $plannedHashes = @{}; $keptReceiptFile = $false
     $helperPath = Join-Path $GameRoot 'BetterAstralParty-UpdateHelper.exe'
     $helperReceipt = Join-Path $GameRoot 'BetterAstralParty.helper.receipt'
     if ((Test-Path -LiteralPath $helperPath) -or (Test-Path -LiteralPath $helperReceipt)) {
@@ -113,7 +113,10 @@ try {
     foreach ($file in $files) {
         $path = Join-Path $GameRoot $file.Path
         Assert-InstallTarget $GameRoot $path
-        if (!(Test-Path -LiteralPath $path)) { continue }
+        if (!(Test-Path -LiteralPath $path)) {
+            if ($hashes.ContainsKey($file.Path) -and $file.Path -cne 'BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll') { $missingOwned += $path; $plannedHashes[$path] = $null }
+            continue
+        }
         if (!(Test-Path -LiteralPath $path -PathType Leaf)) { throw "Expected a file: $path" }
         $hash = Get-UninstallHash $path
         $owned = $file.Exclusive -or ($hashes.ContainsKey($file.Path) -and $hashes[$file.Path] -eq $hash)
@@ -127,19 +130,24 @@ try {
             Write-Warning "보존: 소유 확인 불가 또는 변경된 파일 / Kept unknown or modified file: $path"
         }
     }
+    if ($missingOwned.Count -and !$keptReceiptFile) {
+        $validate=(Get-BapInstallVerifier $externalBundle).GetType('SteamLauncher').GetMethod('ValidatePartialRemoval',[Reflection.BindingFlags]'Public,Static')
+        if (!$validate) { throw '일부 설치 파일이 누락되었습니다. 최신 전체 묶음의 제거기를 사용하세요. / Missing installation files; use the current complete package uninstaller.' }
+        $null=$validate.Invoke($null,[object[]]@([string]$GameRoot))
+    }
     if ($receipt -and !$keptReceiptFile) { $targets += $receiptPath; $plannedHashes[$receiptPath] = Get-UninstallHash $receiptPath }
     elseif ($keptReceiptFile) { Write-Warning '소유권이 불확실하거나 수정된 파일과 설치 기록을 보존합니다. / Unknown or modified files and their receipt are retained.' }
     if (!$targets.Count -and !$removeShortcut) { Write-Host '제거할 확인된 파일·바로가기가 없습니다. / No verified mod files or shortcut to remove.'; return }
     $loaderPath = Join-Path $GameRoot 'doorstop_config.ini'
     Assert-InstallTarget $GameRoot $loaderPath
     $loaderText = $null; $loaderUpdated = $null
-    if ($targets.Count -and (Test-Path -LiteralPath $loaderPath -PathType Leaf)) {
+    if ($RestoreLoader -ne 'Keep' -and $targets.Count -and (Test-Path -LiteralPath $loaderPath -PathType Leaf)) {
         $loaderText = [IO.File]::ReadAllText($loaderPath)
         $enabled = [regex]::Matches($loaderText, '(?m)^enabled\s*=\s*(true|false)\s*$')
         if ($enabled.Count -gt 1) { throw 'Ambiguous loader configuration; nothing removed.' }
         if ($enabled.Count -eq 1) {
             $restore = if ($RestoreLoader -eq 'Recorded') {
-                # Installer only writes false. A later true is a user's/another mod's change.
+                # Explicit legacy restoration only; ordinary removal never rewrites shared settings.
                 if ($enabled[0].Groups[1].Value -eq 'true') { $true } else { $receipt.loaderBefore }
             } else { $RestoreLoader -eq 'Enabled' }
             if ($restore -isnot [bool]) {
@@ -183,7 +191,7 @@ try {
     }
     if (@(Get-BapGameTargets $GameRoot).Count) { throw 'Game/launcher started; removal cancelled.' }
     if ($removeShortcut -and (Get-Process steam -ErrorAction SilentlyContinue)) { throw 'Steam restarted; removal cancelled. Nothing removed.' }
-    $backupTargets = @($targets)
+    $backupTargets = @($targets)+@($missingOwned)
     if ($loaderUpdated -ne $null) { $backupTargets += $loaderPath; $plannedHashes[$loaderPath] = Get-UninstallHash $loaderPath }
     $transaction = Start-InstallTransaction $GameRoot $backupTargets 0
     $state = Get-Content -LiteralPath $transaction -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -193,6 +201,11 @@ try {
     }
     foreach ($entry in $state.Entries) {
         Assert-InstallTarget $GameRoot $entry.Target
+        if (!$entry.Existed) {
+            if (Test-Path -LiteralPath $entry.Target) { throw "File appeared during uninstall; retained: $($entry.Target)" }
+            $rollbackExpected[$entry.Target]=$null
+            continue
+        }
         if ((Get-UninstallHash $entry.Target) -ne $entry.Hash) { throw "File changed during uninstall: $($entry.Target)" }
         if ($entry.Target -eq $loaderPath) {
             if ([IO.File]::ReadAllText($loaderPath) -ne $loaderText) { throw 'Loader configuration changed during uninstall.' }
@@ -218,7 +231,7 @@ try {
     if ($keptReceiptFile -or !$receipt) {
         Write-Host '확인된 파일 제거를 마쳤습니다. 미확인·변경 파일과 기록은 남아 있습니다. / Verified files removed; unknown or modified files and evidence remain.'
     } else {
-        Write-Host '제거 완료. 로더 실행 설정과 모드 바로가기를 정리했습니다. 다른 모드 파일은 유지합니다. / Removed mod files and launch split; other mods preserved.'
+        Write-Host '제거 완료. 모드 파일·바로가기를 정리했습니다. 공용 로더 설정과 다른 모드는 유지합니다. / Removed mod files and shortcut; shared loader settings and other mods preserved.'
     }
 } catch {
     $failure = $_

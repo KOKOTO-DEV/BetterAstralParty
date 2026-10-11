@@ -136,7 +136,15 @@ function Open-BapInstallBundle([string]$PackageRoot,[string]$GameRoot,[string]$R
                 if(!$part -or $part -ne $part.Trim() -or $part.EndsWith('.') -or $part -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)'){throw '설치 경로 별칭은 허용하지 않습니다. / Installation path alias rejected.'}
             }
             $path=Join-Path $package $f.path;Assert-InstallTarget $package $path
-            $s=[IO.File]::Open($path,'Open','Read','Read');$leases.Add($s)
+            try { $s=[IO.File]::Open($path,'Open','Read','Read') }
+            catch {
+                $cause=$_.Exception.GetBaseException()
+                if($cause -is [IO.FileNotFoundException] -or $cause -is [IO.DirectoryNotFoundException]) {
+                    throw ('BAP-PACKAGE-INCOMPLETE: 설치 묶음 파일이 없습니다: '+$f.path+'. 공식 Releases의 전체 ZIP을 새 폴더에 다시 받아 압축 해제하세요. 기존 파일·기록·백업은 보존됩니다. / Package file missing: '+$f.path+'. Download the complete ZIP from the official Releases page and extract it into a new folder. Existing files, records and backups are preserved.')
+                }
+                throw
+            }
+            $leases.Add($s)
             if((Get-FileHash -InputStream $s -Algorithm SHA256).Hash -cne $f.sha256){throw ('설치 묶음 파일이 변경되었습니다: '+$f.path+' / Package hash mismatch.')}
             if($null -ne $f.bytes -and $s.Length -ne $f.bytes){throw '설치 파일 길이가 맞지 않습니다. / Package length mismatch.'}
             $hashes.Add($f.path,$f.sha256)
@@ -243,7 +251,8 @@ function Assert-BapInstallTransition($Bundle,[switch]$ConfirmRecovery) {
         $highest=Get-BapInstallVersion $state.HighestVersion;if((Compare-BapInstallVersion $highest $floor) -gt 0){$floor=$highest}
     }
     $same=@($Bundle.Expected.Keys|Where-Object {$observed[$_] -cne $Bundle.Expected[$_]}).Count -eq 0
-    $valid=@($seen.Keys|Where-Object {$observed[$_] -cne $seen[$_]}).Count -eq 0
+    $samePayload=@($seen.Keys|Where-Object {$seen[$_] -cne $Bundle.Expected[$_]}).Count -eq 0
+    $valid=@($seen.Keys|Where-Object {($null -ne $observed[$_] -or $_ -ceq 'BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll') -and $observed[$_] -cne $seen[$_]}).Count -eq 0
     if($Bundle.Recovery){
         $plan=$Bundle.Recovery
         if($plan.fromVersion -cne $current.Text -or $plan.receiptSha256 -cne $observed['BetterAstralParty.install.json'] -or !$plan.observedFiles -or @($plan.observedFiles.PSObject.Properties).Count -ne $observed.Count){throw '복구 계획의 현재 설치 기준이 다릅니다. / Recovery plan does not match the current installation.'}
@@ -254,7 +263,7 @@ function Assert-BapInstallTransition($Bundle,[switch]$ConfirmRecovery) {
         if($observed['BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll'] -ceq '2C6524A88482BFB6E394FBE0A9F6A0E3EE3E42FE15ED62577E33308184BDAD24' -or $observed['BetterAstralParty-Launcher.exe'] -ceq '25CAF5F38626545670BD34A5FB39C8193827499D204276003158630A24039C69'){throw '현재 파일에 과거 비호환 산출물이 있습니다. receipt를 정상 기준으로 채택하지 않습니다. 검토된 복구가 필요합니다. / Obsolete current image requires reviewed recovery.'}
         if(!$valid){throw '기존 설치 파일과 receipt가 다릅니다. 덮어쓰지 않고 중단합니다. / Existing installation differs from its receipt.'}
         if((Compare-BapInstallVersion $Bundle.Version $floor) -lt 0){throw ('현재 또는 적용된 업데이트보다 오래된 설치 묶음입니다 ('+$Bundle.Version.Text+' < '+$floor.Text+'). 최신 전체 묶음을 사용하세요. / Downgrade blocked.')}
-        if((Compare-BapInstallVersion $Bundle.Version $current) -eq 0 -and !$same){throw '같은 버전이지만 다른 빌드입니다. 기존 설치를 보존합니다. 검토된 복구 계획이 필요합니다. / Different build at the same version requires reviewed recovery.'}
+        if((Compare-BapInstallVersion $Bundle.Version $current) -eq 0 -and !$samePayload){throw '같은 버전이지만 다른 빌드입니다. 기존 설치를 보존합니다. 검토된 복구 계획이 필요합니다. / Different build at the same version requires reviewed recovery.'}
         $Bundle.Mode=if($same){'SameBuild'}else{'Upgrade'}
     }
     $Bundle.Observed=$observed

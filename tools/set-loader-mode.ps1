@@ -7,19 +7,6 @@
 
 $ErrorActionPreference = 'Stop'
 if ($Mode -eq 'Mod') {
-    throw 'Steam 기본 실행은 Vanilla로 유지합니다. 게임 폴더의 BetterAstralParty-Mod.cmd로 실행하세요.'
+    throw 'BAP 적용 여부는 실행 항목에서 선택합니다. 게임 폴더의 BetterAstralParty-Mod.cmd로 실행하세요.'
 }
-$config = Join-Path $GameRoot 'doorstop_config.ini'
-if (-not (Test-Path -LiteralPath $config)) {
-    throw "BepInEx가 설치되지 않았습니다: $config"
-}
-
-$enabled = if ($Mode -eq 'Mod') { 'true' } else { 'false' }
-$content = Get-Content -LiteralPath $config -Raw
-$updated = [regex]::Replace($content, '(?m)^enabled\s*=\s*(true|false)\s*$', "enabled=$enabled", 1)
-if ($updated -eq $content -and $content -notmatch '(?m)^enabled\s*=') {
-    throw 'doorstop_config.ini에서 enabled 설정을 찾지 못했습니다.'
-}
-
-[IO.File]::WriteAllText($config, $updated, [Text.UTF8Encoding]::new($false))
-Write-Host $(if ($Mode -eq 'Mod') { 'BetterAstralParty 모드 실행으로 설정됨' } else { '완전 바닐라 실행으로 설정됨' })
+Write-Host 'BAP 없이 실행하려면 원래 Steam 항목을 선택하세요. 공용 로더와 다른 모드는 변경하지 않습니다. / Use the original Steam entry without BAP; shared loader and other mods are unchanged.'

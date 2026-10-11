@@ -1,12 +1,717 @@
 {
   "schema": 1,
   "kind": "source-release",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "files": [
     {
       "path": "diagnostics/DiagnosticBundle.cs",
-      "bytes": 72171,
-      "sha256": "E59E7F59F017EF9690AFEA8CB63C7E7721BC9A0E50532C4F833231EF4E84397E"
+      "bytes": 93357,
+      "sha256": "B0F0646A43F5EFD4982E63D0494EEFB1220910644BBB66E88865592AA5A9833E"
+    },
+    {
+      "path": "tools/find-game.ps1",
+      "bytes": 2102,
+      "sha256": "9D51E5D078DF4DE01E7C175167E5DBBADBE54F6D2167905F5C1E054CB1A935E5"
+    },
+    {
+      "path": "src/VisibleCombat.cs",
+      "bytes": 5270,
+      "sha256": "CB70F7AC52080548B0C0D92D985ED235C2BAB3E0431A9CBA652DACCDDB4A8736"
+    },
+    {
+      "path": "updater/UpdateRecovery.cs",
+      "bytes": 5104,
+      "sha256": "E30267A89FF9FE6E4788B47F8008FCD265EA20393F6DB52D1E654A667A5B0B01"
+    },
+    {
+      "path": "updater/UpdateCancelSignal.cs",
+      "bytes": 2674,
+      "sha256": "1AC765FA8E607FDBD87B021A16D48E794BEECD975E0931798449CF8F334F9414"
+    },
+    {
+      "path": "updater/UpdateRecoveryPolicy.cs",
+      "bytes": 7672,
+      "sha256": "4E0A721763F114FB71DAD7EAE372D9BEC72FB0F60B88677317473158357736FF"
+    },
+    {
+      "path": "updater/UpdateStaging.cs",
+      "bytes": 8489,
+      "sha256": "F126315D5249B7CF8A664D506D25275390238C6216510833B54B8981FA1E5574"
+    },
+    {
+      "path": "updater/OrdinaryInstallRecovery.cs",
+      "bytes": 10476,
+      "sha256": "59CED4C264A4B233B1EB7533FCB380119CBB7C56ED9BFB99BA1C900D2D5DF44C"
+    },
+    {
+      "path": "tools/steam-shortcut.ps1",
+      "bytes": 14828,
+      "sha256": "47AD0F6678783022E55018A8F70BC797CDB30C77E88343F8A4981D8AA86D1BD3"
+    },
+    {
+      "path": "updater/WindowsPrivateSecurity.cs",
+      "bytes": 5275,
+      "sha256": "795AB28C37A17C650FE905F24458C6AE871454697A6769FD6A951A2B9E50E364"
+    },
+    {
+      "path": "src/UpdateNotificationState.cs",
+      "bytes": 4039,
+      "sha256": "BEA3E2537810117F0A5035ECC5F12B02BDE35C13747B7BAC21751E39730D4FE6"
+    },
+    {
+      "path": "src/UpdateDownload.cs",
+      "bytes": 30339,
+      "sha256": "CFD44C06F5794A252F12CF812C63E7B1A8F3F6ABC114DD463B0C985660A97F38"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/Dobby-LICENSE.txt",
+      "bytes": 11356,
+      "sha256": "43070E2D4E532684DE521B885F385D0841030EFA2B1A20BAFB76133A5E1379C1"
+    },
+    {
+      "path": "updater/UpdateCompatibility.cs",
+      "bytes": 5386,
+      "sha256": "F4FDD6F325B497EC9F59E04C7AEB151DFC7159A9B251A04CE6DC633F67E33622"
+    },
+    {
+      "path": "src/CardPreviewUi.cs",
+      "bytes": 16745,
+      "sha256": "2CC78E1582F815A99E30EED67528EB3AA399BB0C7B9895E159E69B11B8C0F3A8"
+    },
+    {
+      "path": "src/CardTargetButtonsUi.cs",
+      "bytes": 3405,
+      "sha256": "C08E7BDBB34A2D6986473B9E0F3E5F3E1F56F4FE075A5B2F3938BE834DAD3313"
+    },
+    {
+      "path": "src/CharacterGuideUi.cs",
+      "bytes": 23407,
+      "sha256": "9B24395781F42ECFD78348C389AC3E5596A14325AFBFBBFAB595A85285F35F92"
+    },
+    {
+      "path": "src/CharacterNames.cs",
+      "bytes": 1927,
+      "sha256": "848C671452C3C736C4C421EEDC15DE12EF6913A092B775566136EA73CECACF3F"
+    },
+    {
+      "path": "src/CardKoMinimum.cs",
+      "bytes": 4459,
+      "sha256": "BAD3B69B99FC15D3E6204D562AE50928C19648CAC2AFA38BCEC371F01CA24CC9"
+    },
+    {
+      "path": "src/CharacterNameUi.cs",
+      "bytes": 7159,
+      "sha256": "548F38A31108BB7AD47F8949BD61CFC66D84F8359970CF3F63AE971F3BEF56A3"
+    },
+    {
+      "path": "src/ChoiceVisual.cs",
+      "bytes": 3453,
+      "sha256": "1C845366CDB0C9B0DC6A5623458DB8B5F0A9626B765C9A15A5361CC1D2141AE7"
+    },
+    {
+      "path": "src/CombatAdvisor.cs",
+      "bytes": 9390,
+      "sha256": "A75FB3461BE1AAC32B10068534357071E6551E65A20F6B59F9B6B74A02801590"
+    },
+    {
+      "path": "src/Compatibility.cs",
+      "bytes": 1713,
+      "sha256": "D02F4B4C56E44CEDA69CC61BA34B5397EE166D6F2A52192DFEEFD74B1A4B0C88"
+    },
+    {
+      "path": "src/DiagnosticActions.cs",
+      "bytes": 4436,
+      "sha256": "69B65A6C8489E8E3CA5A48C518060E5F1E2DA941FE3AB54984B1FF0DB81A769E"
+    },
+    {
+      "path": "src/DiagnosticLog.cs",
+      "bytes": 13567,
+      "sha256": "9E6837ABCF403DDA19CBE9E0F97152C21260158D9328F453330B286AA92D4631"
+    },
+    {
+      "path": "src/CardPreviewLayout.cs",
+      "bytes": 1632,
+      "sha256": "122C7091658D10398B8A8D7E1BFC23BD475CE159E618BD7C018D54040D3A7712"
+    },
+    {
+      "path": "src/EncounterAdvisor.cs",
+      "bytes": 3490,
+      "sha256": "DE678F2C2587842E69E1D606FB133E82D86C217B747C96B80892CCDEECC6E9AC"
+    },
+    {
+      "path": "tools/diagnostics.ps1",
+      "bytes": 7274,
+      "sha256": "DD37E7EDE1C3C1E770FFEFD0CB76E68A5EAE594B75C8EC1A3DA38438B8130343"
+    },
+    {
+      "path": "THIRD-PARTY-SOURCE/Il2CppInterop-dbda1cb353b0-source.zip",
+      "bytes": 385975,
+      "sha256": "11952C55E8B779EFB5AC580A44F27FAEFEF9D13E4A3C8AE860510F521A14AE05"
+    },
+    {
+      "path": "updater/UpdateFaults.cs",
+      "bytes": 17886,
+      "sha256": "9D2A82044FD9755B514B69191D62F679D7CA9B610C74601B17729D3473EE8E97"
+    },
+    {
+      "path": "updater/UpdateHelperProgram.cs",
+      "bytes": 8531,
+      "sha256": "8B4EC301C95AA9623FC05F3A24947DFBA4054A0ABFD771E6E74FA92D34E25B47"
+    },
+    {
+      "path": "updater/UpdateHelperService.cs",
+      "bytes": 24096,
+      "sha256": "640057868EBC12D727C79458E9D8B320B1345E689C7A56C69E3BFEEC79876400"
+    },
+    {
+      "path": "updater/UpdateLaunchGate.cs",
+      "bytes": 2223,
+      "sha256": "260180737D0022086F6F158DA6A32561CD4C368B1CD857A5D78B6C7767F59DBC"
+    },
+    {
+      "path": "updater/UpdatePackage.cs",
+      "bytes": 12252,
+      "sha256": "7BA65DC043CCA93077C64EA8002ED9927FAFA3DF373D4E539BA3B74FB12C176A"
+    },
+    {
+      "path": "src/UpdateNotificationUi.cs",
+      "bytes": 11889,
+      "sha256": "5BA7C210DCDB378CEEEE2CFC99785B9BD4FA9079A96D8FE3D296388A1E64346E"
+    },
+    {
+      "path": "src/WindowsReleaseCredentialInput.cs",
+      "bytes": 5263,
+      "sha256": "972ADD19BBA024C98F5E1E102D10A5B9B231417F3D51AB4B615AD3DF63996E64"
+    },
+    {
+      "path": "src/WindowsMatchFocus.cs",
+      "bytes": 6904,
+      "sha256": "9BDF9B98AF39AE6985DB6E413D7F8E08C8AF4AC75F68268929D9EDFA30E8FFFA"
+    },
+    {
+      "path": "src/WindowsInputNotification.cs",
+      "bytes": 3012,
+      "sha256": "A64F86E54F0CFED2AFB2E5EB4299A5FB5104178FC42E7F616C6D8981604956DF"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/Iced-LICENSE.txt",
+      "bytes": 1114,
+      "sha256": "93A47598376FD3F276B631E75149340087153C6FF1635A53C5790249E9124E2D"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/Il2CppInterop-LICENSE.txt",
+      "bytes": 42802,
+      "sha256": "5EECCE16E59E24DDD9D3712012517A033F2CD0459ACE22B43D5659D4624ABFF0"
+    },
+    {
+      "path": "THIRD-PARTY-SOURCE/UnityDoorstop-33dab9a67338.zip",
+      "bytes": 114921,
+      "sha256": "A71789FFCB359F6A37C6D2C7BBDD0527231E9DB00BF46637693CFF88BA7FFB80"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/MonoMod-Backports-LICENSE.txt",
+      "bytes": 1080,
+      "sha256": "0B64833222E3C6A426AD29362D26334619FE02EAF2B89EA9C37805521896C920"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/SemanticVersioning-LICENSE.txt",
+      "bytes": 1054,
+      "sha256": "26A00BAD0D14CA2FC93C10398D477FA9609D6FD36068867DE53384218C1F64A3"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/SOURCES.md",
+      "bytes": 3996,
+      "sha256": "15986D8E18F69A57EE14CF481D6561CAC363EF9FECD381088A41F451D14535B4"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/dotnet-THIRD-PARTY-NOTICES.txt",
+      "bytes": 46771,
+      "sha256": "55FF71C32F96483C2F4E061EB78EE9BF3D8D562D00143C67B361BB4CE989FE44"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/HarmonyX-LICENSE.txt",
+      "bytes": 1063,
+      "sha256": "7E54AB4766EF78637A05FB3454663A66DE6BB960DBD4C7088890ED76B0844F36"
+    },
+    {
+      "path": "THIRD-PARTY-SOURCE/BepInEx-5b766a3b7f6c-source.zip",
+      "bytes": 268538,
+      "sha256": "31F8926B28C5AECB08F244346E250EE0C1BF9FEE5487CC7050E20B44BE6A0A85"
+    },
+    {
+      "path": "tools/AstralParty-Vanilla.cmd",
+      "bytes": 267,
+      "sha256": "6213CEAF3DBD2AB9CAAB350406E5C70C75D568511279FD15D0207FE3F1BC7FDB"
+    },
+    {
+      "path": "tools/BetterAstralParty-Mod.cmd",
+      "bytes": 395,
+      "sha256": "678D906A9EA36240932743207E7DC4AA065D0A200B9E8E28DED9F29736B50B96"
+    },
+    {
+      "path": "tools/BetterAstralParty-Steam.ps1",
+      "bytes": 3700,
+      "sha256": "43DFB997A93EDE8228CB6F0A69D62AEFD3FE0F64F268654983EF2A0E706BDE9C"
+    },
+    {
+      "path": "tools/build-launcher.ps1",
+      "bytes": 3722,
+      "sha256": "010BB3EB4A71AFCB7333654BB262F4E07A8BE26732338EFC91A5C6088C204660"
+    },
+    {
+      "path": "tools/build-update-helper.ps1",
+      "bytes": 1645,
+      "sha256": "408CF2B5ECAB2C9BF7416F2CAFDFD1F5161BB0CE28F585306E99737C8C95FFEA"
+    },
+    {
+      "path": "tools/check-compatibility.ps1",
+      "bytes": 6422,
+      "sha256": "5D056FDBA99A5191F36F284EF65339B59EA78F1AF4A90418F3100FF86DB654E9"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/MonoMod-LICENSE.txt",
+      "bytes": 1080,
+      "sha256": "0B64833222E3C6A426AD29362D26334619FE02EAF2B89EA9C37805521896C920"
+    },
+    {
+      "path": "src/EncounterCounterUi.cs",
+      "bytes": 2864,
+      "sha256": "23CD5BCC82620C73276D3C90FCBEE9C82EF5DAB6C2541DB05D0B33A15C34A728"
+    },
+    {
+      "path": "src/CharacterRole.cs",
+      "bytes": 542,
+      "sha256": "EAA233840F3FEF4C339E3DAC241D375163971BCA815D3F261119AFCD1E7C1F95"
+    },
+    {
+      "path": "updater/InstallReceipt.cs",
+      "bytes": 9558,
+      "sha256": "D365555566C6D53618689B2EA1C4F947893EA00C3CA0636233FDA96DA06C58CC"
+    },
+    {
+      "path": "diagnostics-tests/RuntimeHealthFixture.cs",
+      "bytes": 8184,
+      "sha256": "5A8ED5B1D75CAED322156ED9E7CEF90526C9EBAE1509F11EC5697CC8A7715B10"
+    },
+    {
+      "path": "diagnostics-tests/Test-Diagnostics.ps1",
+      "bytes": 46955,
+      "sha256": "13BC8DA28EC6E9504F078E33EFF521192FF3158B4F5460BB3D23606ACDB60C7D"
+    },
+    {
+      "path": "focus-tests/automatic-helper-upgrade/AutomaticHelperUpgradeFixture.csproj",
+      "bytes": 619,
+      "sha256": "514C42B75D6220EC9AE3552795D5F7D5E78C10C577E2876F5EC146EE7D876270"
+    },
+    {
+      "path": "focus-tests/automatic-helper-upgrade/Program.cs",
+      "bytes": 22291,
+      "sha256": "69578AC0018204E088C67BEAFBF9FFB7E0E19643608F8E433E8A8BABD283834F"
+    },
+    {
+      "path": "focus-tests/catalog-compatibility/CatalogCompatibilityFixture.csproj",
+      "bytes": 687,
+      "sha256": "23B447171E7439CDCDB29A8F0ACCA018B952555A283EC0754186C2FDB2C765A8"
+    },
+    {
+      "path": "focus-tests/catalog-compatibility/Compare-PowerShell.ps1",
+      "bytes": 3601,
+      "sha256": "2F739523A6C2F41B3D1C4F1F9E8872063E983F042F62456FC19CCA02699C0DA8"
+    },
+    {
+      "path": "focus-tests/catalog-compatibility/Program.cs",
+      "bytes": 19882,
+      "sha256": "B574416ECD29F6B9139CC6A1F8687DB076F795F714C272C058542210D0733404"
+    },
+    {
+      "path": "focus-tests/shared-loader-enable/RuntimeFixture.cs",
+      "bytes": 14880,
+      "sha256": "F99EDBD77E7A925A9E0D11DC6A083688A6AC884758B5375966C726E8890AB71B"
+    },
+    {
+      "path": "focus-tests/shared-loader-enable/SharedLoaderEnableFixture.csproj",
+      "bytes": 608,
+      "sha256": "72E755803DD9E8CD24AE64DCFDCC281B6CCD8A227490D4234E6076F4AF591BDC"
+    },
+    {
+      "path": "focus-tests/whole-channel-transition/Program.cs",
+      "bytes": 51922,
+      "sha256": "9A438BF15D1E1A76EE5086E2F81EABCBD6F1D69D1A1B889D2B6759B5A7A2D2B9"
+    },
+    {
+      "path": "focus-tests/whole-channel-transition/WholeChannelTransitionFixture.csproj",
+      "bytes": 635,
+      "sha256": "FD5915655AF2631116AB4AAA466BA47A708A621824B0D5F6F258C1E3708136A5"
+    },
+    {
+      "path": "diagnostics-tests/Program.cs",
+      "bytes": 9610,
+      "sha256": "74D7F2FF23A3C65923C3B484DC9C570EC32A1F243DAB67BB18C3FE04C048D18F"
+    },
+    {
+      "path": "helper-bootstrap/current/descriptor",
+      "bytes": 268,
+      "sha256": "F0D8726E44E86E66FF77F41760CA15281BF9612DC148BEBD311DDD0EEBB16B07"
+    },
+    {
+      "path": "helper-bootstrap/current/signature",
+      "bytes": 586,
+      "sha256": "88F5CDE3E86D905015289720CF82CEA70CF119A160A3C40B979E69EADC9FA99D"
+    },
+    {
+      "path": "helper-delivery.json",
+      "bytes": 539,
+      "sha256": "17D6AD05EA3E55D210E247AABEB798A8D312F81C5314062A24644053134C1AC2"
+    },
+    {
+      "path": "self-test/UpdateGenerationCheck.cs",
+      "bytes": 3330,
+      "sha256": "B0FDB1AF0BD6C01C8CE3D01A44ED03EA5548148969ECCB95715E69CB746494C7"
+    },
+    {
+      "path": "tools/test-automatic-helper-upgrade.ps1",
+      "bytes": 3218,
+      "sha256": "1BF7C462953C15E24F67A59593200824C057243EE8FAE1F5FACA7ADD1E4AC772"
+    },
+    {
+      "path": "tools/test-catalog-compatibility.ps1",
+      "bytes": 4378,
+      "sha256": "E98C0BEBE21062DFD59F3A185E7FB9EF38A68A238B72EEA98E237F8619E083E0"
+    },
+    {
+      "path": "tools/test-install-bundle-missing.ps1",
+      "bytes": 5906,
+      "sha256": "6B88558332BC0D2703AC9CACBC4CE1C5DC8C6548C7BAA01C562116BCC15EB7CC"
+    },
+    {
+      "path": "tools/test-install-recovery-diagnostics.ps1",
+      "bytes": 3372,
+      "sha256": "AB4A3FBC4E09FE4422A3DC47CE3755C91AF2D88F237F7EE0366464A97F1915EE"
+    },
+    {
+      "path": "tools/test-shared-loader-enable.ps1",
+      "bytes": 7763,
+      "sha256": "E57BD27A8A5A8BD5C52AEF4B59C0DC350FD98C64B18E296CA888F75B3C1B2A0A"
+    },
+    {
+      "path": "tools/test-shared-loader.ps1",
+      "bytes": 4622,
+      "sha256": "BE0DD6588079C18B8D2D8181A0072934E7C239AB6419837E4611D627D8C403DC"
+    },
+    {
+      "path": "tools/test-whole-channel-transition.ps1",
+      "bytes": 25617,
+      "sha256": "5EAC4184E03BF28E675055D735AA753EA7C824F28C8EF5C4816074265F2B1A26"
+    },
+    {
+      "path": "updater/AutomaticHelperUpgrade.cs",
+      "bytes": 13886,
+      "sha256": "36733FADD71595D6DB87823F992F35FA78D055432A3F3E5921578A18F675A549"
+    },
+    {
+      "path": "helper-bootstrap/current/image.exe",
+      "bytes": 252416,
+      "sha256": "DD20022FC764A900F641FB1455BA7379FCAC7732076E471E3455C786882B3B39"
+    },
+    {
+      "path": "diagnostics-tests/FencedStoreFixture.cs",
+      "bytes": 10003,
+      "sha256": "2807DBB305F0EC431819AC5AAB1F0770BF44BDA94084C01189B3F92ABD97E281"
+    },
+    {
+      "path": "diagnostics-tests/BetterAstralParty.Diagnostics.Fixture.csproj",
+      "bytes": 651,
+      "sha256": "BF7A6C07D3BB99A7F41256979E835984F76186095E4C4BAC43480E7ED75A2D86"
+    },
+    {
+      "path": "tools/test-runtime-arguments.ps1",
+      "bytes": 7257,
+      "sha256": "C743474D6A7C9BEBAAAF8E817B0D566C1171BAD6B35F54F3CDC3E31EBD3556FB"
+    },
+    {
+      "path": "src/CardDiceUi.cs",
+      "bytes": 11684,
+      "sha256": "9F6262964B42B3F353496C48AE191691E327488471DB77DEAB224A2932D037A3"
+    },
+    {
+      "path": "updater/InstalledPluginMetadata.cs",
+      "bytes": 9998,
+      "sha256": "A9FB59D218704A2C5E1ACE74F0AAFF16DBBE942AE1DEF17D509498C73C28D624"
+    },
+    {
+      "path": "updater/ChannelTransitionIntent.cs",
+      "bytes": 13257,
+      "sha256": "CDEA4C4A411B4438AF9B7D970747F5ECA708E4E523123217CD1476FE32F44969"
+    },
+    {
+      "path": "updater/UpdateTicket.cs",
+      "bytes": 6567,
+      "sha256": "90B14E462158E1C10C50873A914F52EE85009E72686B9D5A1426B12F0B3383CC"
+    },
+    {
+      "path": "updater/UpdateTransaction.cs",
+      "bytes": 34441,
+      "sha256": "49B037B0A844E2712350AC7EC5B6B92E91C49A136E55EACCF25122CFDEF1019E"
+    },
+    {
+      "path": "updater/UpdateTrust.cs",
+      "bytes": 19938,
+      "sha256": "95311C9EE2D587E96E02DD92E1C086D8354343CAFCE094102DB2C7EB6BC7AF09"
+    },
+    {
+      "path": "updater/UpdateVersion.cs",
+      "bytes": 3690,
+      "sha256": "032050D49E9C3D154E11F20B4A2566858887B0D4EE0618C4C7050EAAEA07E3B0"
+    },
+    {
+      "path": "updater/WholeInstallBridge.cs",
+      "bytes": 46794,
+      "sha256": "FBF2067AF7886917A4297601AD2398A1D7DB929B8215483531413578E5376639"
+    },
+    {
+      "path": "updater/WindowsFileFence.cs",
+      "bytes": 26798,
+      "sha256": "4321DA9779F01D52BF18DE38DF9A9168674E53F0E05A0F7DB16FC83F7DC5D0D7"
+    },
+    {
+      "path": "updater/UpdateRetention.cs",
+      "bytes": 5253,
+      "sha256": "95DE6F32E5429C285D9955879BE75784AFF907146D9C4FEFD2731EA91756F81B"
+    },
+    {
+      "path": "tools/install-backup.ps1",
+      "bytes": 12744,
+      "sha256": "D667E801E392DEFC576DD29C03C51D1257CE40BBF64DE3149E213B2B8C0789F0"
+    },
+    {
+      "path": "updater/ReleaseFeedPolicy.cs",
+      "bytes": 2583,
+      "sha256": "264EBCB5A10BEF6FA0288EF550534A529CDE9EE9DAEE529AAC09DFE021A8AC78"
+    },
+    {
+      "path": "updater/ProductionUpdateKeys.cs",
+      "bytes": 3155,
+      "sha256": "45D62483AB6B441EA4CF3C17EA61A3854B31A6CB0711AE95088100B7782A8DB2"
+    },
+    {
+      "path": "src/UpdateSafety.cs",
+      "bytes": 5087,
+      "sha256": "699B19630642E7E3E34C937D90087B13819563C510D66F8A8450A6D9AA357396"
+    },
+    {
+      "path": "tools/install-log.ps1",
+      "bytes": 2339,
+      "sha256": "EB897A87B0CA320342C37AF196B13F3FC6A8638C82ABBEEBD2F413385919829F"
+    },
+    {
+      "path": "tools/install-policy.ps1",
+      "bytes": 32507,
+      "sha256": "A7015CFDF56EC217F5111D21EC0F8FEF00DC68F3DB2BED61D8976ECCD6487881"
+    },
+    {
+      "path": "tools/install-reinstall.ps1",
+      "bytes": 26693,
+      "sha256": "C5F5FBFB9E597253E6940D29E73A17748A66ADA29A3A5D027E20842B3BD0F052"
+    },
+    {
+      "path": "tools/install.ps1",
+      "bytes": 18231,
+      "sha256": "AD7F07907171D81D75AC8FC8C37695ED0B3655943201A93CE33EABB97906FDD5"
+    },
+    {
+      "path": "tools/InstallHelperBootstrap.cs",
+      "bytes": 4865,
+      "sha256": "CF99A6CA185FABC5F984E62B42A02C975415FC4576B36479D9FEF5FE74FE2A1E"
+    },
+    {
+      "path": "tools/set-loader-mode.ps1",
+      "bytes": 616,
+      "sha256": "5FA34CD50B0BAD7C041EBDE6CF815B9C287C30A8955033280B69E793FBCEF995"
+    },
+    {
+      "path": "updater/ReceiptChannelState.cs",
+      "bytes": 6263,
+      "sha256": "27469AF107ABDDD2490B3C7B304F991072FFBF92AC0BEB6AFEFDAF453BCC253E"
+    },
+    {
+      "path": "tools/steam-session.ps1",
+      "bytes": 9718,
+      "sha256": "4035E436399F1ECB2621B799602FE63A94F741701B8C29CBAC5DF3D1F175C53F"
+    },
+    {
+      "path": "tools/SteamLauncher.cs",
+      "bytes": 13121,
+      "sha256": "E1C42788E1F972EE459D0C19380FA0065A505AED1BE692EF607F2116BF8AE28F"
+    },
+    {
+      "path": "tools/uninstall.ps1",
+      "bytes": 20059,
+      "sha256": "8928D2085C576D783050C647A188B768C2BD12EB2B6CE600BE5D7FD1E95143C4"
+    },
+    {
+      "path": "updater/HelperDelivery.cs",
+      "bytes": 23104,
+      "sha256": "01061E0C3681FE1B9073DC984932C59B2CBC5081786CF60E0C6EAD27D3817EEE"
+    },
+    {
+      "path": "tools/install-bootstrap.ps1",
+      "bytes": 3743,
+      "sha256": "5642C5F09C05A8074129282DDC2FF44CDCFBC6A472393C384FFBBF7C549171A2"
+    },
+    {
+      "path": "src/FieldZoomUi.cs",
+      "bytes": 17571,
+      "sha256": "5D58F649E7F5B93D739B0DAB401764FB0CE51D721346E1052F2ADC4D91F009EE"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/dotnet-LICENSE.txt",
+      "bytes": 1116,
+      "sha256": "CFC21F5E8BD655AE997EEC916138B707B1D290B83272C02A95C9F821B8C87310"
+    },
+    {
+      "path": "src/UpdatePreferencesBridge.cs",
+      "bytes": 2028,
+      "sha256": "DF2AFB77E2E237E1F9F20A53694EB91A61F96364BF60B803F856F73E5CE4C9CE"
+    },
+    {
+      "path": "LICENSE",
+      "bytes": 1063,
+      "sha256": "18E91F678C6CD066C56C8EE86D6B9B9CD96D0CE54DACD86D86DAA62E329B28C0"
+    },
+    {
+      "path": "NuGet.Config",
+      "bytes": 126,
+      "sha256": "8867F395F9DDD6E93E63B5BF694982167ECA7423767725DFAC19C82EF5B64733"
+    },
+    {
+      "path": "src/CardDiceLayout.cs",
+      "bytes": 2393,
+      "sha256": "D2E3063D0E7F4447A035C5C7D53B46868609EEDE3E5AA95D0917FB44A47922C0"
+    },
+    {
+      "path": "offline-nuget.config",
+      "bytes": 75,
+      "sha256": "D240B9AFFA63E3D05D49F0463BC05947ED2FF1D6C97159E1A4CE73FEC946D5EF"
+    },
+    {
+      "path": "src/AdviceBadge.cs",
+      "bytes": 6843,
+      "sha256": "D610E507B825B72042D77624DE03E9E2E0A6C9E1E989B488B19BB8512F6E139A"
+    },
+    {
+      "path": "src/AdviceText.cs",
+      "bytes": 5725,
+      "sha256": "48C9857EF5C1FC71837F0F08560518666DF867EBDF03AD568B17E5552F54723A"
+    },
+    {
+      "path": "src/AutomaticUpdates.cs",
+      "bytes": 27443,
+      "sha256": "0AE2CE7A51664E73D71E687E18EADD22FA22D9A0915D5D40CB429938B0005FCA"
+    },
+    {
+      "path": "global.json",
+      "bytes": 111,
+      "sha256": "631420FBD26CB46CB5850918749892E553DFAEC0A3EDB6C215B77C9D6D4D5D8B"
+    },
+    {
+      "path": "src/AutomaticUpdateSnapshot.cs",
+      "bytes": 972,
+      "sha256": "6B8949E8C661ACC9D532C3594551ED880BF11EA4782D8347C60AAA7F6184E566"
+    },
+    {
+      "path": "src/BattleStatusUi.cs",
+      "bytes": 25363,
+      "sha256": "410EF7990F950AF1B5A2FAD8EE1642E66BA2DE0386AE2C1999F45F2A7EECE224"
+    },
+    {
+      "path": "src/BetterAstralParty.csproj",
+      "bytes": 6231,
+      "sha256": "7D24BE3B343B672496C46DB88178025447A70AE569478F11C70E9C8B4F2E8E72"
+    },
+    {
+      "path": "docs/INSTALL.md",
+      "bytes": 289,
+      "sha256": "3AFF8D92861727BDBF54D5580FF2572BA56E9AF3A30017D615B8BC6786B08538"
+    },
+    {
+      "path": "README.md",
+      "bytes": 15998,
+      "sha256": "7146777E07C22E0CCBC7B8F284E21C1704623468AC8DA400CB9AED9079CE736B"
+    },
+    {
+      "path": "src/FieldNameFont.cs",
+      "bytes": 1524,
+      "sha256": "144F4ECECEC714BA7CAB04A67685E4F17E16DCCF9C6E1E7CC58125A028BD1E8A"
+    },
+    {
+      "path": "src/FocusAudio.cs",
+      "bytes": 1463,
+      "sha256": "5EC7933DD1444B01F5CC72F9A3F437D7167D41598C69071692CC09818DC7134E"
+    },
+    {
+      "path": "src/Observability/MinimalEventLog.cs",
+      "bytes": 22018,
+      "sha256": "FDED501E9DD9A6E2F660DCE5DB75202871686D740787D1E71CD491A2B83ABA48"
+    },
+    {
+      "path": "src/HandClickBinding.cs",
+      "bytes": 2487,
+      "sha256": "FE3F10E08974549325297341187A67DCE489E9C966761973BAE9BBDA919A8742"
+    },
+    {
+      "path": "src/CardUi.cs",
+      "bytes": 6704,
+      "sha256": "D6E7A92556AF6B85AEA3E5FFBB14A33A797A2B5CC5B2624F83C2F1722A5F6D59"
+    },
+    {
+      "path": "src/Observability/DiagnosticPrivateSecurity.cs",
+      "bytes": 6285,
+      "sha256": "3C34E988D9EAC82045D66C9B91FDE7CCBAD651EB78DB38DF51D6EC60881A3BE2"
+    },
+    {
+      "path": "src/InputAttentionState.cs",
+      "bytes": 1390,
+      "sha256": "F1CAB4692C8A4BBC2BD90691FE70301992517AB6B23C7006169A46AD6F971394"
+    },
+    {
+      "path": "self-test/HttpTransportCheck.cs",
+      "bytes": 5897,
+      "sha256": "B801B4752232F640410241E4454231B7ADB03E8A5A1C47CC734BC37A82875410"
+    },
+    {
+      "path": "self-test/LanguageCheck.cs",
+      "bytes": 11915,
+      "sha256": "285C1209F550F44E4C8DEF55B23F548AA49FB392B772F99666DCB9D2753F0697"
+    },
+    {
+      "path": "self-test/Program.cs",
+      "bytes": 73031,
+      "sha256": "72E937B12A4724EE6A5B644A286A34F7FD42B82A580E61AE28F3112AE485E035"
+    },
+    {
+      "path": "self-test/PublicCombatEffectsCheck.cs",
+      "bytes": 23863,
+      "sha256": "7DF4B7C8E08EA5EA43F3D319848296E1DC41FB171B8C0706BB0AD6BC9536EF50"
+    },
+    {
+      "path": "src/UpdateHandoff.cs",
+      "bytes": 10464,
+      "sha256": "38F7EA59ED232A4F4A46E827FCB05E212646AEDFD0917C02804B8DCD53AF0A48"
+    },
+    {
+      "path": "Directory.Build.props",
+      "bytes": 445,
+      "sha256": "5B4408A3542CB377E37198873F865083F974232BF324598060977FC6E1AE3F5C"
+    },
+    {
+      "path": "src/Observability/SafeDiagnosticEvent.cs",
+      "bytes": 14023,
+      "sha256": "B8D52ED48256DEA259E360E766CCD62DE0A2D180759AA49BB917E09BFAAB7634"
+    },
+    {
+      "path": "src/CatalogGuard.cs",
+      "bytes": 3006,
+      "sha256": "5FD7A930D00CFB68B7CC30B9F7B7CF4C01E5437EC3A8E07687DE6049B5D6BFEB"
     },
     {
       "path": "src/InputAttention.cs",
@@ -40,8 +745,8 @@
     },
     {
       "path": "src/ReleaseUpdates.cs",
-      "bytes": 32958,
-      "sha256": "7410EE0BBE2374EE8E5F1B335B42C5C23C94A080654CC843061B87D679795E86"
+      "bytes": 32962,
+      "sha256": "5179592DF5F2530974E0492DD65DF8EA50858B3050FB16EE0FC92E06375F04FC"
     },
     {
       "path": "src/RemainingHpUi.cs",
@@ -100,8 +805,8 @@
     },
     {
       "path": "src/Plugin.cs",
-      "bytes": 24589,
-      "sha256": "8B74FA68A21E8BD63DC0E2E365E7E98EB09960B6BAAC1D948DF1D51D26B98EFE"
+      "bytes": 24361,
+      "sha256": "740B3C93C0DBD04F8D117193D53DD5080466E5D3725D20E26F1B1E6C7066A309"
     },
     {
       "path": "src/PingFocusGuard.cs",
@@ -115,13 +820,13 @@
     },
     {
       "path": "tools/install-helper.ps1",
-      "bytes": 5309,
-      "sha256": "8D8CD875AF1A7001EDBC2A365FE581AFDB369EBD5C067D73C30CAC0C3402946A"
+      "bytes": 5705,
+      "sha256": "40618D5A119E4BD670FDFC53A238B393FA3B8A49BA5906687890B3A8D4BF899E"
     },
     {
       "path": "docs/BUILD.md",
-      "bytes": 5029,
-      "sha256": "9E151C3CEE6AAAB65DFFAABB7B6095251FFEEA992E3AF43B04FA08DD4F15DC57"
+      "bytes": 4217,
+      "sha256": "0FF78310F47268C6466BFCB5FA260CEAAC9B8088EA659885A6EF6FA62DCABB3B"
     },
     {
       "path": "src/BattleStatusLayout.cs",
@@ -134,164 +839,164 @@
       "sha256": "A4F82DF2489454395A58C812FB672D2582EAF08066F855056A608A127D1AFEBC"
     },
     {
-      "path": "src/CatalogGuard.cs",
-      "bytes": 2604,
-      "sha256": "4747CE0E7A0CCDC0ACB617446F4B29872FD67DEC7C502168F75D0578AD468E5D"
-    },
-    {
-      "path": "src/Observability/SafeDiagnosticEvent.cs",
-      "bytes": 14023,
-      "sha256": "B8D52ED48256DEA259E360E766CCD62DE0A2D180759AA49BB917E09BFAAB7634"
-    },
-    {
-      "path": "Directory.Build.props",
-      "bytes": 445,
-      "sha256": "5B4408A3542CB377E37198873F865083F974232BF324598060977FC6E1AE3F5C"
-    },
-    {
-      "path": "docs/INSTALL.md",
-      "bytes": 289,
-      "sha256": "3AFF8D92861727BDBF54D5580FF2572BA56E9AF3A30017D615B8BC6786B08538"
-    },
-    {
-      "path": "LICENSE",
-      "bytes": 1063,
-      "sha256": "18E91F678C6CD066C56C8EE86D6B9B9CD96D0CE54DACD86D86DAA62E329B28C0"
-    },
-    {
-      "path": "NuGet.Config",
-      "bytes": 126,
-      "sha256": "8867F395F9DDD6E93E63B5BF694982167ECA7423767725DFAC19C82EF5B64733"
-    },
-    {
-      "path": "src/CardDiceLayout.cs",
-      "bytes": 2393,
-      "sha256": "D2E3063D0E7F4447A035C5C7D53B46868609EEDE3E5AA95D0917FB44A47922C0"
-    },
-    {
-      "path": "offline-nuget.config",
-      "bytes": 75,
-      "sha256": "D240B9AFFA63E3D05D49F0463BC05947ED2FF1D6C97159E1A4CE73FEC946D5EF"
-    },
-    {
-      "path": "src/AdviceBadge.cs",
-      "bytes": 6843,
-      "sha256": "D610E507B825B72042D77624DE03E9E2E0A6C9E1E989B488B19BB8512F6E139A"
-    },
-    {
-      "path": "src/AdviceText.cs",
-      "bytes": 5725,
-      "sha256": "48C9857EF5C1FC71837F0F08560518666DF867EBDF03AD568B17E5552F54723A"
-    },
-    {
-      "path": "src/AutomaticUpdates.cs",
-      "bytes": 27443,
-      "sha256": "0AE2CE7A51664E73D71E687E18EADD22FA22D9A0915D5D40CB429938B0005FCA"
-    },
-    {
-      "path": "global.json",
-      "bytes": 111,
-      "sha256": "631420FBD26CB46CB5850918749892E553DFAEC0A3EDB6C215B77C9D6D4D5D8B"
-    },
-    {
-      "path": "src/AutomaticUpdateSnapshot.cs",
-      "bytes": 972,
-      "sha256": "6B8949E8C661ACC9D532C3594551ED880BF11EA4782D8347C60AAA7F6184E566"
-    },
-    {
-      "path": "src/BattleStatusUi.cs",
-      "bytes": 25363,
-      "sha256": "410EF7990F950AF1B5A2FAD8EE1642E66BA2DE0386AE2C1999F45F2A7EECE224"
-    },
-    {
-      "path": "src/BetterAstralParty.csproj",
-      "bytes": 6033,
-      "sha256": "D49968DEE28D2855F3245F8B3D72CBF254F9D081C2C5A23F0F2781947C991E56"
-    },
-    {
-      "path": "README.md",
-      "bytes": 13818,
-      "sha256": "F8ECCD100168B98D41F0A34A0943630FAE8F54178E79864F8BBE698793CD5A5E"
-    },
-    {
-      "path": "src/UpdateHandoff.cs",
-      "bytes": 10464,
-      "sha256": "38F7EA59ED232A4F4A46E827FCB05E212646AEDFD0917C02804B8DCD53AF0A48"
-    },
-    {
-      "path": "src/FieldNameFont.cs",
-      "bytes": 1524,
-      "sha256": "144F4ECECEC714BA7CAB04A67685E4F17E16DCCF9C6E1E7CC58125A028BD1E8A"
-    },
-    {
-      "path": "src/FocusAudio.cs",
-      "bytes": 1463,
-      "sha256": "5EC7933DD1444B01F5CC72F9A3F437D7167D41598C69071692CC09818DC7134E"
-    },
-    {
-      "path": "src/Observability/MinimalEventLog.cs",
-      "bytes": 22018,
-      "sha256": "FDED501E9DD9A6E2F660DCE5DB75202871686D740787D1E71CD491A2B83ABA48"
-    },
-    {
-      "path": "src/HandClickBinding.cs",
-      "bytes": 2487,
-      "sha256": "FE3F10E08974549325297341187A67DCE489E9C966761973BAE9BBDA919A8742"
-    },
-    {
-      "path": "src/CardUi.cs",
-      "bytes": 6704,
-      "sha256": "D6E7A92556AF6B85AEA3E5FFBB14A33A797A2B5CC5B2624F83C2F1722A5F6D59"
-    },
-    {
-      "path": "src/Observability/DiagnosticPrivateSecurity.cs",
-      "bytes": 6285,
-      "sha256": "3C34E988D9EAC82045D66C9B91FDE7CCBAD651EB78DB38DF51D6EC60881A3BE2"
-    },
-    {
-      "path": "src/InputAttentionState.cs",
-      "bytes": 1390,
-      "sha256": "F1CAB4692C8A4BBC2BD90691FE70301992517AB6B23C7006169A46AD6F971394"
-    },
-    {
-      "path": "self-test/HttpTransportCheck.cs",
-      "bytes": 5897,
-      "sha256": "B801B4752232F640410241E4454231B7ADB03E8A5A1C47CC734BC37A82875410"
-    },
-    {
-      "path": "self-test/LanguageCheck.cs",
-      "bytes": 11915,
-      "sha256": "285C1209F550F44E4C8DEF55B23F548AA49FB392B772F99666DCB9D2753F0697"
-    },
-    {
-      "path": "self-test/Program.cs",
-      "bytes": 73031,
-      "sha256": "72E937B12A4724EE6A5B644A286A34F7FD42B82A580E61AE28F3112AE485E035"
-    },
-    {
-      "path": "self-test/PublicCombatEffectsCheck.cs",
-      "bytes": 23863,
-      "sha256": "7DF4B7C8E08EA5EA43F3D319848296E1DC41FB171B8C0706BB0AD6BC9536EF50"
-    },
-    {
       "path": "self-test/ReleaseSessionCheck.cs",
-      "bytes": 21781,
-      "sha256": "057B4AAA7AACF3620243140AB54950DC755C5D14920429BB3A9368864E6E758A"
+      "bytes": 23540,
+      "sha256": "7851D8C20405D2DD77C0B053471F6911047BDB3ABECEA005C535A0648433EB41"
+    },
+    {
+      "path": "updater/CatalogInventory.cs",
+      "bytes": 1609,
+      "sha256": "138BD45A532F45890D41DD96DA430D3DAEA25109156ACC682488DE0C56CC77E8"
     },
     {
       "path": "self-test/ReleaseUpdateCheck.cs",
-      "bytes": 51268,
-      "sha256": "FA43CD2B96D82AF9578C68EA18EA00672985CB5562110762AA784F2DEF913592"
-    },
-    {
-      "path": "self-test/ResolutionCheck.cs",
-      "bytes": 4874,
-      "sha256": "DE76433C5747F1EF5CDDE24EE9DB95BF676F843705DC882D73595F22FDAB190A"
+      "bytes": 51305,
+      "sha256": "A710EE6D4CE4F48D3D2DB197ACD9DE50A6212B955C9FA08D7D4103E89BC8A1B1"
     },
     {
       "path": "focus-tests/free-camera/FieldFreeCameraFixture.cs",
       "bytes": 35973,
       "sha256": "E76212D862F2F2865F8391DCA22402798AAC5C9C38C901A7E8FFCA23EF5D4CBF"
+    },
+    {
+      "path": "src/FieldIndicatorOpacity.cs",
+      "bytes": 3960,
+      "sha256": "24E28EF177FF18CC8192ABC7CDB9EFC242985EAD7F7B12D58D892098F2D25722"
+    },
+    {
+      "path": "src/FieldZoomGeometry.cs",
+      "bytes": 6921,
+      "sha256": "DB652C486B550DB897CBCCC25F702E09A0633E956B004094932770DE9F469CFC"
+    },
+    {
+      "path": "src/HandOutlineBinding.cs",
+      "bytes": 3185,
+      "sha256": "EF49E58A2E15CDB3A3C429E778B7240AE8D9AC065D36F471359EAE44C8B07A26"
+    },
+    {
+      "path": "src/HandLayoutUi.cs",
+      "bytes": 42219,
+      "sha256": "3D949C208B08CF0B627B23813E613441C96C227358F3E935FE40E0801FA64167"
+    },
+    {
+      "path": "src/MatchFocus.cs",
+      "bytes": 3174,
+      "sha256": "CD2654C754AD9865F5A915D15C80EF294AD695CC7AEAEC34F57E2C9942A111FC"
+    },
+    {
+      "path": "self-test/BetterAstralParty.SelfTest.csproj",
+      "bytes": 3210,
+      "sha256": "78354CC06CB858152C41F774559F6580401B3A57716A25E0973B970889B3E2D2"
+    },
+    {
+      "path": "self-test/CatalogCheck.cs",
+      "bytes": 2145,
+      "sha256": "BA31ED8C4EA03209CB1375AC9C08EFC5C5B0966BE6CDC9C183DF3B68B1811A59"
+    },
+    {
+      "path": "self-test/CombatEffectsCheck.cs",
+      "bytes": 18021,
+      "sha256": "D3F84663872100D09A90472C2C8DC55E99B221A2684B9DFB270FDA0ADB572DA8"
+    },
+    {
+      "path": "self-test/CombatLogReplayCheck.cs",
+      "bytes": 7967,
+      "sha256": "9B72877CE425F59862DA13ECFFA971667DA562E7A91360DFEE44FF651C7A76A6"
+    },
+    {
+      "path": "self-test/FeedIdentityCheck.cs",
+      "bytes": 2584,
+      "sha256": "EA4E1D4AD4CB4290A1E78C5C39F2C4516C736822BB0BED83B43BA14D34E96F7B"
+    },
+    {
+      "path": "tools/test-runtime-getters.ps1",
+      "bytes": 5892,
+      "sha256": "7E76881B24F858A691B909847BA7C348B7DC3FD1B4EF004D20E471B3D407D43B"
+    },
+    {
+      "path": "src/FieldFreeCamera.cs",
+      "bytes": 10488,
+      "sha256": "3F5B6D7A7C8413ADB97D7FF8C61845B580FD599AFCD4E793DD72471D9AD15709"
+    },
+    {
+      "path": "src/CardAdvisor.cs",
+      "bytes": 9162,
+      "sha256": "5CC85BFB3A9041393582493ACF3DF8DA133FE8B42B36EB78717E90EFAFFF6472"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/Doorstop-LICENSE.txt",
+      "bytes": 26526,
+      "sha256": "20C17D8B8C48A600800DFD14F95D5CB9FF47066A9641DDEAB48DC54AEC96E331"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/AsmResolver-LICENSE.txt",
+      "bytes": 1108,
+      "sha256": "1C967BB945D9E86F79E49DDA29E834D49FF3CB203C9A98878E7661B3DE7A5559"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/AssetRipper-Primitives-LICENSE.txt",
+      "bytes": 1062,
+      "sha256": "DAE6148FF7AD3331A6380A2CE0CBB87F71B8F177891ABA1661B1D3A6FE52D5DE"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/BepInEx-LICENSE.txt",
+      "bytes": 25338,
+      "sha256": "F2CECA48AF033D8ADF337A8F9453E633CFAD10A1F8C9FEC2E5AE55A2D8FFE952"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/Capstone-dotnet-LICENSE.txt",
+      "bytes": 1062,
+      "sha256": "79463FA3B9FACDA0F90E33EDA09FF57C6C4D5620BA8B01E5C48A68834E20DE4E"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/Cecil-LICENSE.txt",
+      "bytes": 1098,
+      "sha256": "13D58ECBED676511C0C4C4009BFF107025E50007FF5E7901DC562700EC62509E"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/component-matrix.json",
+      "bytes": 64190,
+      "sha256": "22FEA1FB165E3C4F225561F47490E77F248BB6EC79DBD21E54ACBDDE73148333"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/Cpp2IL-LICENSE.txt",
+      "bytes": 1066,
+      "sha256": "1A80D1B99E958385045DA1E383A105895D1C997EF2B36448430DBFE3763FE670"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/Disarm-LICENSE.txt",
+      "bytes": 1066,
+      "sha256": "DFE5EF7511938E4D23B12C80F38E966A7993AEE60744AB72A947BED7B24963B8"
+    },
+    {
+      "path": "src/WindowsReleaseCredentialStore.cs",
+      "bytes": 5265,
+      "sha256": "2DF1AF1F47BE2164F39D570E95C990CD1E5AF6520BC5D30E05E163097AFA89EE"
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES/AssetRipper-CIL-LICENSE.txt",
+      "bytes": 1062,
+      "sha256": "039CD624A13919C3AF1AEC3CE2217C3F50D6E3053F6E9EF64D9CF37E12812A76"
+    },
+    {
+      "path": "src/FieldBuffUi.cs",
+      "bytes": 17896,
+      "sha256": "375C2F657B39FD8F19F7DD8B846659122AF5A7B2A951796E2DED333E9FA2E2FE"
+    },
+    {
+      "path": "src/FieldCameraReturnUi.cs",
+      "bytes": 10896,
+      "sha256": "9E0046B1888BF9D42E48F03DE9C94A8F5FD6937C482D15DE003BBFAB5091556D"
+    },
+    {
+      "path": "src/AutoThanksUi.cs",
+      "bytes": 4341,
+      "sha256": "3D5E91D77CBD2450C78F30E4D25831067674EA42EF8660835A8760F8BF7DBC4F"
+    },
+    {
+      "path": "updater/WindowsProcessGuard.cs",
+      "bytes": 10724,
+      "sha256": "C24FE201039B2D26ACCB6B55A50F9DC959BE2A0B7380E77A8E7F047501584152"
     },
     {
       "path": "focus-tests/card-scan-performance/RuntimeFixture.cs",
@@ -419,574 +1124,14 @@
       "sha256": "2EFCC3F54C2D30DED56B11B8525001BBC3194039B40731BE3552F9C303C0AD3C"
     },
     {
-      "path": "updater/WindowsProcessGuard.cs",
-      "bytes": 10724,
-      "sha256": "C24FE201039B2D26ACCB6B55A50F9DC959BE2A0B7380E77A8E7F047501584152"
+      "path": "self-test/ResolutionCheck.cs",
+      "bytes": 4874,
+      "sha256": "DE76433C5747F1EF5CDDE24EE9DB95BF676F843705DC882D73595F22FDAB190A"
     },
     {
-      "path": "src/AutoThanksUi.cs",
-      "bytes": 4341,
-      "sha256": "3D5E91D77CBD2450C78F30E4D25831067674EA42EF8660835A8760F8BF7DBC4F"
-    },
-    {
-      "path": "src/FieldCameraReturnUi.cs",
-      "bytes": 10896,
-      "sha256": "9E0046B1888BF9D42E48F03DE9C94A8F5FD6937C482D15DE003BBFAB5091556D"
-    },
-    {
-      "path": "src/FieldFreeCamera.cs",
-      "bytes": 10488,
-      "sha256": "3F5B6D7A7C8413ADB97D7FF8C61845B580FD599AFCD4E793DD72471D9AD15709"
-    },
-    {
-      "path": "src/FieldIndicatorOpacity.cs",
-      "bytes": 3960,
-      "sha256": "24E28EF177FF18CC8192ABC7CDB9EFC242985EAD7F7B12D58D892098F2D25722"
-    },
-    {
-      "path": "src/FieldZoomGeometry.cs",
-      "bytes": 6921,
-      "sha256": "DB652C486B550DB897CBCCC25F702E09A0633E956B004094932770DE9F469CFC"
-    },
-    {
-      "path": "src/HandOutlineBinding.cs",
-      "bytes": 3185,
-      "sha256": "EF49E58A2E15CDB3A3C429E778B7240AE8D9AC065D36F471359EAE44C8B07A26"
-    },
-    {
-      "path": "src/HandLayoutUi.cs",
-      "bytes": 42219,
-      "sha256": "3D949C208B08CF0B627B23813E613441C96C227358F3E935FE40E0801FA64167"
-    },
-    {
-      "path": "src/MatchFocus.cs",
-      "bytes": 3174,
-      "sha256": "CD2654C754AD9865F5A915D15C80EF294AD695CC7AEAEC34F57E2C9942A111FC"
-    },
-    {
-      "path": "self-test/BetterAstralParty.SelfTest.csproj",
-      "bytes": 3210,
-      "sha256": "78354CC06CB858152C41F774559F6580401B3A57716A25E0973B970889B3E2D2"
-    },
-    {
-      "path": "self-test/CatalogCheck.cs",
-      "bytes": 2145,
-      "sha256": "BA31ED8C4EA03209CB1375AC9C08EFC5C5B0966BE6CDC9C183DF3B68B1811A59"
-    },
-    {
-      "path": "self-test/CombatEffectsCheck.cs",
-      "bytes": 18021,
-      "sha256": "D3F84663872100D09A90472C2C8DC55E99B221A2684B9DFB270FDA0ADB572DA8"
-    },
-    {
-      "path": "self-test/CombatLogReplayCheck.cs",
-      "bytes": 7967,
-      "sha256": "9B72877CE425F59862DA13ECFFA971667DA562E7A91360DFEE44FF651C7A76A6"
-    },
-    {
-      "path": "self-test/FeedIdentityCheck.cs",
-      "bytes": 2584,
-      "sha256": "EA4E1D4AD4CB4290A1E78C5C39F2C4516C736822BB0BED83B43BA14D34E96F7B"
-    },
-    {
-      "path": "tools/test-runtime-getters.ps1",
-      "bytes": 5892,
-      "sha256": "7E76881B24F858A691B909847BA7C348B7DC3FD1B4EF004D20E471B3D407D43B"
-    },
-    {
-      "path": "src/CardAdvisor.cs",
-      "bytes": 9162,
-      "sha256": "5CC85BFB3A9041393582493ACF3DF8DA133FE8B42B36EB78717E90EFAFFF6472"
-    },
-    {
-      "path": "src/FieldBuffUi.cs",
-      "bytes": 17896,
-      "sha256": "375C2F657B39FD8F19F7DD8B846659122AF5A7B2A951796E2DED333E9FA2E2FE"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/Doorstop-LICENSE.txt",
-      "bytes": 26526,
-      "sha256": "20C17D8B8C48A600800DFD14F95D5CB9FF47066A9641DDEAB48DC54AEC96E331"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/AsmResolver-LICENSE.txt",
-      "bytes": 1108,
-      "sha256": "1C967BB945D9E86F79E49DDA29E834D49FF3CB203C9A98878E7661B3DE7A5559"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/AssetRipper-Primitives-LICENSE.txt",
-      "bytes": 1062,
-      "sha256": "DAE6148FF7AD3331A6380A2CE0CBB87F71B8F177891ABA1661B1D3A6FE52D5DE"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/BepInEx-LICENSE.txt",
-      "bytes": 25338,
-      "sha256": "F2CECA48AF033D8ADF337A8F9453E633CFAD10A1F8C9FEC2E5AE55A2D8FFE952"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/Capstone-dotnet-LICENSE.txt",
-      "bytes": 1062,
-      "sha256": "79463FA3B9FACDA0F90E33EDA09FF57C6C4D5620BA8B01E5C48A68834E20DE4E"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/Cecil-LICENSE.txt",
-      "bytes": 1098,
-      "sha256": "13D58ECBED676511C0C4C4009BFF107025E50007FF5E7901DC562700EC62509E"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/component-matrix.json",
-      "bytes": 64146,
-      "sha256": "392C6697CF9F21555C3ED5F462110EAD144B3670791C796271A03385A7A659BF"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/Cpp2IL-LICENSE.txt",
-      "bytes": 1066,
-      "sha256": "1A80D1B99E958385045DA1E383A105895D1C997EF2B36448430DBFE3763FE670"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/Disarm-LICENSE.txt",
-      "bytes": 1066,
-      "sha256": "DFE5EF7511938E4D23B12C80F38E966A7993AEE60744AB72A947BED7B24963B8"
-    },
-    {
-      "path": "src/WindowsReleaseCredentialStore.cs",
-      "bytes": 5265,
-      "sha256": "2DF1AF1F47BE2164F39D570E95C990CD1E5AF6520BC5D30E05E163097AFA89EE"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/AssetRipper-CIL-LICENSE.txt",
-      "bytes": 1062,
-      "sha256": "039CD624A13919C3AF1AEC3CE2217C3F50D6E3053F6E9EF64D9CF37E12812A76"
-    },
-    {
-      "path": "src/UpdatePreferencesBridge.cs",
-      "bytes": 2028,
-      "sha256": "DF2AFB77E2E237E1F9F20A53694EB91A61F96364BF60B803F856F73E5CE4C9CE"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/dotnet-LICENSE.txt",
-      "bytes": 1116,
-      "sha256": "CFC21F5E8BD655AE997EEC916138B707B1D290B83272C02A95C9F821B8C87310"
-    },
-    {
-      "path": "src/FieldZoomUi.cs",
-      "bytes": 17571,
-      "sha256": "5D58F649E7F5B93D739B0DAB401764FB0CE51D721346E1052F2ADC4D91F009EE"
-    },
-    {
-      "path": "tools/install-bootstrap.ps1",
-      "bytes": 3743,
-      "sha256": "5642C5F09C05A8074129282DDC2FF44CDCFBC6A472393C384FFBBF7C549171A2"
-    },
-    {
-      "path": "updater/UpdateFaults.cs",
-      "bytes": 17886,
-      "sha256": "9D2A82044FD9755B514B69191D62F679D7CA9B610C74601B17729D3473EE8E97"
-    },
-    {
-      "path": "updater/UpdateHelperProgram.cs",
-      "bytes": 8531,
-      "sha256": "8B4EC301C95AA9623FC05F3A24947DFBA4054A0ABFD771E6E74FA92D34E25B47"
-    },
-    {
-      "path": "updater/UpdateHelperService.cs",
-      "bytes": 24096,
-      "sha256": "640057868EBC12D727C79458E9D8B320B1345E689C7A56C69E3BFEEC79876400"
-    },
-    {
-      "path": "updater/UpdateLaunchGate.cs",
-      "bytes": 1736,
-      "sha256": "C69E31C927167AC216A1688FA057767EB8ACA588D9731EC430B934EF9098B4BA"
-    },
-    {
-      "path": "updater/UpdatePackage.cs",
-      "bytes": 12252,
-      "sha256": "7BA65DC043CCA93077C64EA8002ED9927FAFA3DF373D4E539BA3B74FB12C176A"
-    },
-    {
-      "path": "src/UpdateNotificationUi.cs",
-      "bytes": 11889,
-      "sha256": "5BA7C210DCDB378CEEEE2CFC99785B9BD4FA9079A96D8FE3D296388A1E64346E"
-    },
-    {
-      "path": "src/WindowsReleaseCredentialInput.cs",
-      "bytes": 5263,
-      "sha256": "972ADD19BBA024C98F5E1E102D10A5B9B231417F3D51AB4B615AD3DF63996E64"
-    },
-    {
-      "path": "src/WindowsMatchFocus.cs",
-      "bytes": 6904,
-      "sha256": "9BDF9B98AF39AE6985DB6E413D7F8E08C8AF4AC75F68268929D9EDFA30E8FFFA"
-    },
-    {
-      "path": "src/WindowsInputNotification.cs",
-      "bytes": 3012,
-      "sha256": "A64F86E54F0CFED2AFB2E5EB4299A5FB5104178FC42E7F616C6D8981604956DF"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/Iced-LICENSE.txt",
-      "bytes": 1114,
-      "sha256": "93A47598376FD3F276B631E75149340087153C6FF1635A53C5790249E9124E2D"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/Il2CppInterop-LICENSE.txt",
-      "bytes": 42802,
-      "sha256": "5EECCE16E59E24DDD9D3712012517A033F2CD0459ACE22B43D5659D4624ABFF0"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/MonoMod-Backports-LICENSE.txt",
-      "bytes": 1080,
-      "sha256": "0B64833222E3C6A426AD29362D26334619FE02EAF2B89EA9C37805521896C920"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/MonoMod-LICENSE.txt",
-      "bytes": 1080,
-      "sha256": "0B64833222E3C6A426AD29362D26334619FE02EAF2B89EA9C37805521896C920"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/SemanticVersioning-LICENSE.txt",
-      "bytes": 1054,
-      "sha256": "26A00BAD0D14CA2FC93C10398D477FA9609D6FD36068867DE53384218C1F64A3"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/SOURCES.md",
-      "bytes": 3881,
-      "sha256": "803D7A7CC8D01FDF58A4CC70B54CAFA7A7037371204F35B81332A40CD9DE44EB"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/dotnet-THIRD-PARTY-NOTICES.txt",
-      "bytes": 46771,
-      "sha256": "55FF71C32F96483C2F4E061EB78EE9BF3D8D562D00143C67B361BB4CE989FE44"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/HarmonyX-LICENSE.txt",
-      "bytes": 1063,
-      "sha256": "7E54AB4766EF78637A05FB3454663A66DE6BB960DBD4C7088890ED76B0844F36"
-    },
-    {
-      "path": "THIRD-PARTY-SOURCE/BepInEx-5b766a3b7f6c-source.zip",
-      "bytes": 268538,
-      "sha256": "31F8926B28C5AECB08F244346E250EE0C1BF9FEE5487CC7050E20B44BE6A0A85"
-    },
-    {
-      "path": "tools/AstralParty-Vanilla.cmd",
-      "bytes": 267,
-      "sha256": "6213CEAF3DBD2AB9CAAB350406E5C70C75D568511279FD15D0207FE3F1BC7FDB"
-    },
-    {
-      "path": "tools/BetterAstralParty-Mod.cmd",
-      "bytes": 395,
-      "sha256": "678D906A9EA36240932743207E7DC4AA065D0A200B9E8E28DED9F29736B50B96"
-    },
-    {
-      "path": "tools/BetterAstralParty-Steam.ps1",
-      "bytes": 3086,
-      "sha256": "F355BD3CF5244EAD3D6A48C1128402734958B98686FC7E16FE72F118336A73F4"
-    },
-    {
-      "path": "tools/build-launcher.ps1",
-      "bytes": 2442,
-      "sha256": "2749A0B0F828063F90C2E5216A7574B3E14FF2BE2BEEF340384B8A0565AD20FD"
-    },
-    {
-      "path": "tools/build-update-helper.ps1",
-      "bytes": 1645,
-      "sha256": "408CF2B5ECAB2C9BF7416F2CAFDFD1F5161BB0CE28F585306E99737C8C95FFEA"
-    },
-    {
-      "path": "tools/check-compatibility.ps1",
-      "bytes": 4831,
-      "sha256": "C68FDC1973D12AF77630EA0AD62D8D510B69607C4A2029785D54ED530C9C627E"
-    },
-    {
-      "path": "THIRD-PARTY-SOURCE/Il2CppInterop-dbda1cb353b0-source.zip",
-      "bytes": 385975,
-      "sha256": "11952C55E8B779EFB5AC580A44F27FAEFEF9D13E4A3C8AE860510F521A14AE05"
-    },
-    {
-      "path": "THIRD-PARTY-SOURCE/UnityDoorstop-33dab9a67338.zip",
-      "bytes": 114921,
-      "sha256": "A71789FFCB359F6A37C6D2C7BBDD0527231E9DB00BF46637693CFF88BA7FFB80"
-    },
-    {
-      "path": "tools/diagnostics.ps1",
-      "bytes": 5251,
-      "sha256": "1B9547CE0BFEDE12FE7E6FAE705362AB838558DFA3C4A1ADE105D20D7FA667E3"
-    },
-    {
-      "path": "THIRD-PARTY-NOTICES/Dobby-LICENSE.txt",
-      "bytes": 11356,
-      "sha256": "43070E2D4E532684DE521B885F385D0841030EFA2B1A20BAFB76133A5E1379C1"
-    },
-    {
-      "path": "tools/find-game.ps1",
-      "bytes": 2102,
-      "sha256": "9D51E5D078DF4DE01E7C175167E5DBBADBE54F6D2167905F5C1E054CB1A935E5"
-    },
-    {
-      "path": "src/VisibleCombat.cs",
-      "bytes": 5270,
-      "sha256": "CB70F7AC52080548B0C0D92D985ED235C2BAB3E0431A9CBA652DACCDDB4A8736"
-    },
-    {
-      "path": "updater/UpdateRecovery.cs",
-      "bytes": 5104,
-      "sha256": "E30267A89FF9FE6E4788B47F8008FCD265EA20393F6DB52D1E654A667A5B0B01"
-    },
-    {
-      "path": "updater/UpdateCancelSignal.cs",
-      "bytes": 2674,
-      "sha256": "1AC765FA8E607FDBD87B021A16D48E794BEECD975E0931798449CF8F334F9414"
-    },
-    {
-      "path": "updater/UpdateRecoveryPolicy.cs",
-      "bytes": 7672,
-      "sha256": "4E0A721763F114FB71DAD7EAE372D9BEC72FB0F60B88677317473158357736FF"
-    },
-    {
-      "path": "updater/UpdateStaging.cs",
-      "bytes": 8489,
-      "sha256": "F126315D5249B7CF8A664D506D25275390238C6216510833B54B8981FA1E5574"
-    },
-    {
-      "path": "updater/OrdinaryInstallRecovery.cs",
-      "bytes": 10476,
-      "sha256": "59CED4C264A4B233B1EB7533FCB380119CBB7C56ED9BFB99BA1C900D2D5DF44C"
-    },
-    {
-      "path": "tools/steam-shortcut.ps1",
-      "bytes": 14828,
-      "sha256": "47AD0F6678783022E55018A8F70BC797CDB30C77E88343F8A4981D8AA86D1BD3"
-    },
-    {
-      "path": "updater/WindowsPrivateSecurity.cs",
-      "bytes": 5275,
-      "sha256": "795AB28C37A17C650FE905F24458C6AE871454697A6769FD6A951A2B9E50E364"
-    },
-    {
-      "path": "src/UpdateNotificationState.cs",
-      "bytes": 4039,
-      "sha256": "BEA3E2537810117F0A5035ECC5F12B02BDE35C13747B7BAC21751E39730D4FE6"
-    },
-    {
-      "path": "src/UpdateDownload.cs",
-      "bytes": 30339,
-      "sha256": "CFD44C06F5794A252F12CF812C63E7B1A8F3F6ABC114DD463B0C985660A97F38"
-    },
-    {
-      "path": "updater/UpdateCompatibility.cs",
-      "bytes": 5143,
-      "sha256": "C02981A134DC88CB9FDFBE033E7C943772F572BB92CF9A2F649360D21541EB4D"
-    },
-    {
-      "path": "src/CardPreviewLayout.cs",
-      "bytes": 1632,
-      "sha256": "122C7091658D10398B8A8D7E1BFC23BD475CE159E618BD7C018D54040D3A7712"
-    },
-    {
-      "path": "src/CardPreviewUi.cs",
-      "bytes": 16745,
-      "sha256": "2CC78E1582F815A99E30EED67528EB3AA399BB0C7B9895E159E69B11B8C0F3A8"
-    },
-    {
-      "path": "src/CardTargetButtonsUi.cs",
-      "bytes": 3405,
-      "sha256": "C08E7BDBB34A2D6986473B9E0F3E5F3E1F56F4FE075A5B2F3938BE834DAD3313"
-    },
-    {
-      "path": "src/CharacterGuideUi.cs",
-      "bytes": 23407,
-      "sha256": "9B24395781F42ECFD78348C389AC3E5596A14325AFBFBBFAB595A85285F35F92"
-    },
-    {
-      "path": "src/CharacterNames.cs",
-      "bytes": 1927,
-      "sha256": "848C671452C3C736C4C421EEDC15DE12EF6913A092B775566136EA73CECACF3F"
-    },
-    {
-      "path": "src/CardKoMinimum.cs",
-      "bytes": 4459,
-      "sha256": "BAD3B69B99FC15D3E6204D562AE50928C19648CAC2AFA38BCEC371F01CA24CC9"
-    },
-    {
-      "path": "src/CharacterNameUi.cs",
-      "bytes": 7159,
-      "sha256": "548F38A31108BB7AD47F8949BD61CFC66D84F8359970CF3F63AE971F3BEF56A3"
-    },
-    {
-      "path": "src/ChoiceVisual.cs",
-      "bytes": 3453,
-      "sha256": "1C845366CDB0C9B0DC6A5623458DB8B5F0A9626B765C9A15A5361CC1D2141AE7"
-    },
-    {
-      "path": "src/CombatAdvisor.cs",
-      "bytes": 9390,
-      "sha256": "A75FB3461BE1AAC32B10068534357071E6551E65A20F6B59F9B6B74A02801590"
-    },
-    {
-      "path": "src/Compatibility.cs",
-      "bytes": 1713,
-      "sha256": "D02F4B4C56E44CEDA69CC61BA34B5397EE166D6F2A52192DFEEFD74B1A4B0C88"
-    },
-    {
-      "path": "src/DiagnosticActions.cs",
-      "bytes": 4436,
-      "sha256": "69B65A6C8489E8E3CA5A48C518060E5F1E2DA941FE3AB54984B1FF0DB81A769E"
-    },
-    {
-      "path": "src/DiagnosticLog.cs",
-      "bytes": 13567,
-      "sha256": "9E6837ABCF403DDA19CBE9E0F97152C21260158D9328F453330B286AA92D4631"
-    },
-    {
-      "path": "src/EncounterAdvisor.cs",
-      "bytes": 3490,
-      "sha256": "DE678F2C2587842E69E1D606FB133E82D86C217B747C96B80892CCDEECC6E9AC"
-    },
-    {
-      "path": "src/EncounterCounterUi.cs",
-      "bytes": 2864,
-      "sha256": "23CD5BCC82620C73276D3C90FCBEE9C82EF5DAB6C2541DB05D0B33A15C34A728"
-    },
-    {
-      "path": "src/CharacterRole.cs",
-      "bytes": 542,
-      "sha256": "EAA233840F3FEF4C339E3DAC241D375163971BCA815D3F261119AFCD1E7C1F95"
-    },
-    {
-      "path": "updater/InstallReceipt.cs",
-      "bytes": 9558,
-      "sha256": "D365555566C6D53618689B2EA1C4F947893EA00C3CA0636233FDA96DA06C58CC"
-    },
-    {
-      "path": "src/CardDiceUi.cs",
-      "bytes": 11684,
-      "sha256": "9F6262964B42B3F353496C48AE191691E327488471DB77DEAB224A2932D037A3"
-    },
-    {
-      "path": "updater/InstalledPluginMetadata.cs",
-      "bytes": 9998,
-      "sha256": "A9FB59D218704A2C5E1ACE74F0AAFF16DBBE942AE1DEF17D509498C73C28D624"
-    },
-    {
-      "path": "updater/ChannelTransitionIntent.cs",
-      "bytes": 13257,
-      "sha256": "CDEA4C4A411B4438AF9B7D970747F5ECA708E4E523123217CD1476FE32F44969"
-    },
-    {
-      "path": "updater/UpdateTicket.cs",
-      "bytes": 6567,
-      "sha256": "90B14E462158E1C10C50873A914F52EE85009E72686B9D5A1426B12F0B3383CC"
-    },
-    {
-      "path": "updater/UpdateTransaction.cs",
-      "bytes": 34491,
-      "sha256": "279CBBD7ADC10A9C939A24682E239DF7048E3C229BF47E6494CC1E45EF66DC04"
-    },
-    {
-      "path": "updater/UpdateTrust.cs",
-      "bytes": 19938,
-      "sha256": "95311C9EE2D587E96E02DD92E1C086D8354343CAFCE094102DB2C7EB6BC7AF09"
-    },
-    {
-      "path": "updater/UpdateVersion.cs",
-      "bytes": 3690,
-      "sha256": "032050D49E9C3D154E11F20B4A2566858887B0D4EE0618C4C7050EAAEA07E3B0"
-    },
-    {
-      "path": "updater/WholeInstallBridge.cs",
-      "bytes": 45169,
-      "sha256": "8503B8F83F770B9405C1C5DD60D812472CADCFA639D3AA2FCEABC37B29F8608C"
-    },
-    {
-      "path": "updater/WindowsFileFence.cs",
-      "bytes": 26798,
-      "sha256": "4321DA9779F01D52BF18DE38DF9A9168674E53F0E05A0F7DB16FC83F7DC5D0D7"
-    },
-    {
-      "path": "updater/UpdateRetention.cs",
-      "bytes": 5253,
-      "sha256": "95DE6F32E5429C285D9955879BE75784AFF907146D9C4FEFD2731EA91756F81B"
-    },
-    {
-      "path": "tools/install-backup.ps1",
-      "bytes": 12744,
-      "sha256": "D667E801E392DEFC576DD29C03C51D1257CE40BBF64DE3149E213B2B8C0789F0"
-    },
-    {
-      "path": "updater/ReleaseFeedPolicy.cs",
-      "bytes": 2308,
-      "sha256": "0C68EB502331BF54550A4F667A3F9512158CD18A5D9BA6BCD04961EB2A173428"
-    },
-    {
-      "path": "updater/ProductionUpdateKeys.cs",
-      "bytes": 3155,
-      "sha256": "45D62483AB6B441EA4CF3C17EA61A3854B31A6CB0711AE95088100B7782A8DB2"
-    },
-    {
-      "path": "src/UpdateSafety.cs",
-      "bytes": 5087,
-      "sha256": "699B19630642E7E3E34C937D90087B13819563C510D66F8A8450A6D9AA357396"
-    },
-    {
-      "path": "tools/install-log.ps1",
-      "bytes": 2150,
-      "sha256": "7FC310C13867FF9292E8D92A9AC6B78775495DB1542578E75E2CC4CD4E75EA9F"
-    },
-    {
-      "path": "tools/install-policy.ps1",
-      "bytes": 31620,
-      "sha256": "92AEB5AAB9B72DFBA03F9945BD83CFB63FE19F24887F2DF6F649107D36A7C2D1"
-    },
-    {
-      "path": "tools/install-reinstall.ps1",
-      "bytes": 26495,
-      "sha256": "1EC2DBE96051D90C22ADE710CB45987C3733D63F2C16DA8E412255B9A4B54B86"
-    },
-    {
-      "path": "tools/install.ps1",
-      "bytes": 18365,
-      "sha256": "FDB27C40E7BBCF42690B9E09CFA11905684CF8C5FB7D6CD362CDCFFAADED8254"
-    },
-    {
-      "path": "tools/InstallHelperBootstrap.cs",
-      "bytes": 4865,
-      "sha256": "CF99A6CA185FABC5F984E62B42A02C975415FC4576B36479D9FEF5FE74FE2A1E"
-    },
-    {
-      "path": "tools/set-loader-mode.ps1",
-      "bytes": 1122,
-      "sha256": "254E09F2BA50863CC58784CFC1B7555661ECC6058F698A990608E288FC8B8B47"
-    },
-    {
-      "path": "updater/ReceiptChannelState.cs",
-      "bytes": 6263,
-      "sha256": "27469AF107ABDDD2490B3C7B304F991072FFBF92AC0BEB6AFEFDAF453BCC253E"
-    },
-    {
-      "path": "tools/steam-session.ps1",
-      "bytes": 9718,
-      "sha256": "4035E436399F1ECB2621B799602FE63A94F741701B8C29CBAC5DF3D1F175C53F"
-    },
-    {
-      "path": "tools/SteamLauncher.cs",
-      "bytes": 11530,
-      "sha256": "5F0F5D8AF487BAB19F94AC9B8A783CEAC412910D3BB85CB9246FBB2B9513B722"
-    },
-    {
-      "path": "tools/uninstall.ps1",
-      "bytes": 19019,
-      "sha256": "6745AEBB6C6577BB628C8C54BF218723BE3DD99F74A5BAC8DAFCE0508DF08A6B"
-    },
-    {
-      "path": "updater/HelperDelivery.cs",
-      "bytes": 22480,
-      "sha256": "F97CBE4D08A69777CF036B88BB1E630063F31C3AB1ADFCC27A2F80781B79B33A"
-    },
-    {
-      "path": "tools/test-runtime-arguments.ps1",
-      "bytes": 7257,
-      "sha256": "C743474D6A7C9BEBAAAF8E817B0D566C1171BAD6B35F54F3CDC3E31EBD3556FB"
+      "path": "updater/SharedLoaderConfiguration.cs",
+      "bytes": 5070,
+      "sha256": "F3ED05BD9B39D352D446AB9AA947CF6CA5C761A2E10DDD2F3D32C9D5B619A149"
     }
   ]
 }

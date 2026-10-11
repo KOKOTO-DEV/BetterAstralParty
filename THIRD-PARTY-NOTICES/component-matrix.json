@@ -607,8 +607,8 @@
     {
       "path": ".deps/bepinex/doorstop_config.ini",
       "component": "UnityDoorstop",
-      "bytes": 1635,
-      "sha256": "CBA727A55C58B2F91EC6EFF9003B273055B90E63798856366A1211AFA329A8C1"
+      "bytes": 1637,
+      "sha256": "7DAEBB02054747FAEE66C875A778E0E8D54DAD24DD460E1FB69AA31378D9EA8F"
     },
     {
       "path": ".deps/bepinex/dotnet/.version",
@@ -1742,7 +1742,7 @@
   "sourceArchivesScannedForVendorBinaries": true,
   "distributionReview": "pending-independent-review",
   "notes": [
-    "Loader DLLs unchanged; doorstop_config.ini defaults enabled=false.",
+    "Loader DLLs and doorstop_config.ini retain unmodified upstream bytes; the shared loader defaults enabled=true.",
     "Public source archives exclude proprietary Unity/game generated reference DLLs; legal local references are needed to rebuild.",
     "MIT license applies only to BetterAstralParty-owned code; upstream component terms apply separately.",
     "No added restriction on debugging, replacement or relinking upstream libraries."

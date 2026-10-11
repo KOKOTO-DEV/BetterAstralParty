@@ -43,9 +43,27 @@ internal static class SteamLauncher
         if (legacy) throw new InvalidOperationException(
             "구형 설치·제거 도구가 현재 설치를 변경하려고 합니다. 최신 전체 묶음의 Install.cmd / Uninstall.cmd를 사용하세요. / " +
             "Legacy maintenance tool blocked. Use Install.cmd / Uninstall.cmd from the current complete package.");
-        return GuardMaintenance(root);
+        return GuardModLaunchVerified(root,null);
+    }
+    public static IDisposable GuardModLaunchVerified(string root,string? snapshotHash) {
+        return new BetterAstralParty.Updating.UpdateLaunchGate.Lease(root, fence => {
+            var assembly=typeof(SteamLauncher).Assembly;
+            if(assembly.Location.Length!=0 && !String.Equals(Path.GetFullPath(assembly.Location),fence.Full("BetterAstralParty-Launcher.exe"),StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Installed launcher required for helper migration.");
+            if(snapshotHash!=null){
+                if(!System.Text.RegularExpressions.Regex.IsMatch(snapshotHash,@"\A[0-9A-F]{64}\z"))throw new InvalidOperationException("Invalid launcher snapshot hash.");
+                using(var launcher=fence.OpenLaunchImage("BetterAstralParty-Launcher.exe"))
+                    if(launcher.Hash()!=snapshotHash)throw new InvalidOperationException("Launcher changed after snapshot capture.");
+            }
+            BetterAstralParty.Updating.AutomaticHelperUpgrade.Ensure(fence,assembly);
+        });
     }
     public static IDisposable GuardMaintenance(string root) { return new BetterAstralParty.Updating.UpdateLaunchGate.Lease(root); }
+    public static void EnableSharedLoader(string root, IDisposable guardedLaunch) {
+        if(guardedLaunch is not BetterAstralParty.Updating.UpdateLaunchGate.Lease operation)
+            throw new InvalidOperationException("A retained launch lease is required");
+        BetterAstralParty.Updating.SharedLoaderConfiguration.Enable(root,operation);
+    }
     public static string ReadInstallerState(string root)
     {
         using (var fence = new BetterAstralParty.Updating.WindowsFileFence(root)) {
@@ -115,6 +133,7 @@ internal static class SteamLauncher
     }
 
     public static void ValidateInstalledReceipt(byte[] bytes) {BetterAstralParty.Updating.InstallReceipt.Parse(bytes);}
+    public static void ValidatePartialRemoval(string root) {BetterAstralParty.Updating.WholeInstallBridge.ValidatePartialRemoval(root);}
     public static void ValidateWholeInputs(string root,string package,string version) {BetterAstralParty.Updating.WholeInstallBridge.ValidateInputs(root,package,version);}
     public static string ValidateWholeBridge(string root,string package,string version) {return BetterAstralParty.Updating.WholeInstallBridge.Validate(root,package,version);}
     public static string PrepareWholeReceipt(string root,string package,string version,string observation,string loaderBefore) {return BetterAstralParty.Updating.WholeInstallBridge.PrepareReceipt(root,package,version,observation,loaderBefore);}

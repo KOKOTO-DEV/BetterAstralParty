@@ -36,7 +36,12 @@ function Invoke-BapWholeBridge($Bundle, [string]$Method, [string[]]$Additional=@
     if (!$api) { throw 'Verified whole bridge API missing.' }
     [object[]]$arguments=@([string]$Bundle.GameRoot,[string]$Bundle.PackageRoot,[string]$Bundle.Version.Text)+@($Additional)
     try { return $api.Invoke($null,$arguments) }
-    catch { throw ('Whole migration blocked; retain files/settings/recovery evidence. '+$_.Exception.GetBaseException().Message) }
+    catch {
+        $failure=$_.Exception.GetBaseException()
+        $reason=$failure.Data['BapRecoveryReason']
+        $detail=if($reason -is [string] -and $reason -cmatch '\A[A-Za-z]{1,64}\z'){' ['+$reason+']'}else{''}
+        throw ('Whole migration blocked ('+$Method+')'+$detail+'; retain files/settings/recovery evidence. '+$failure.Message+"`n기록을 삭제하지 말고 Create-Diagnostics.cmd로 진단 ZIP을 생성하세요. / Keep recovery records and create a diagnostics ZIP with Create-Diagnostics.cmd.")
+    }
 }
 function Assert-BapWholeBridge($Bundle) {
     $Bundle.WholeObservation=Invoke-BapWholeBridge $Bundle 'ValidateWholeBridge'

@@ -7,6 +7,24 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+function Test-BapCatalogInventory([string[]]$Expected,[string[]]$Actual) {
+    if($Expected.Count -gt 128 -or $Actual.Count -gt 512){return $false}
+    $required=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $present=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach($name in $Expected){if(!$required.Add($name)){return $false}}
+    foreach($name in $Actual){if(!$present.Add($name)){return $false}}
+    if(!$required.IsSubsetOf($present)){return $false}
+    $extra=@($Actual|Where-Object {!$required.Contains($_)})
+    if(!$extra.Count){return $true}
+    $pattern='\Acatalog_((?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8}))\.(?:json|hash)\z'
+    if($Expected.Count -ne 2 -or $Expected[0] -cnotmatch $pattern){return $false}
+    $active=[version]$Matches[1];$stem='catalog_'+$active
+    if(!$required.Contains($stem+'.json') -or !$required.Contains($stem+'.hash')){return $false}
+    # Retain old, unselected caches; current pair hashes remain mandatory above.
+    foreach($name in $extra){if($name -cnotmatch $pattern -or ([version]$Matches[1]).CompareTo($active) -ge 0){return $false}}
+    return $true
+}
+
 function Get-CompatibilityReport {
     $issues = [Collections.Generic.List[string]]::new()
     $warnings = [Collections.Generic.List[string]]::new()
@@ -56,10 +74,14 @@ function Get-CompatibilityReport {
             'game/AstralParty_INT_Data/data.unity3d')) {
             if (!$seen.ContainsKey($required)) { throw "Missing required manifest entry: $required" }
         }
-        # Detect new catalog versions, not just changes to the previously known filenames.
+        # New/unrecognized versions still require review; old exact-name caches need not be deleted.
         $catalogs = @(Get-ChildItem -LiteralPath $CacheRoot -File -ErrorAction Stop |
             Where-Object { $_.Name -match '^catalog.*\.(json|hash)$' } | ForEach-Object Name | Sort-Object)
-        if (($catalogs -join '|') -ne (@($baseline.cacheCatalogs) -join '|')) { $issues.Add('Changed [catalog]: downloaded catalog inventory') }
+        if ((!$seen.ContainsKey('game/AstralParty_INT_Data/StreamingAssets/aa/settings.json') -and $catalogs.Count -ne @($baseline.cacheCatalogs).Count) -or !(Test-BapCatalogInventory @($baseline.cacheCatalogs) $catalogs)) {
+            $extra=@($catalogs|Where-Object {$_ -cnotin @($baseline.cacheCatalogs)}) -join ', '
+            $missing=@($baseline.cacheCatalogs|Where-Object {$_ -cnotin $catalogs}) -join ', '
+            $issues.Add("Changed [catalog]: downloaded catalog inventory; extra=[$extra]; missing=[$missing]")
+        }
     } catch { $issues.Add("Check failed: $($_.Exception.Message)") }
     [pscustomobject]@{ Allowed = ($issues.Count -eq 0); Issues = @($issues.ToArray()); Warnings = @($warnings.ToArray()) }
 }

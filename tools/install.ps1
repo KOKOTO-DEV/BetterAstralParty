@@ -98,8 +98,11 @@ if ($reinstallPlan) {
     Move-BapReinstallHistory $installBundle $reinstallPlan -HeldBackupLock $installLock
 }
 # A durable whole intent can now either finish the exact target or retire an exact restored origin.
+$installStage = 'Whole helper recovery'
 $null=Invoke-BapWholeBridge $installBundle 'RecoverWholeHelper'
+$installStage = 'Installed ownership / whole bridge validation'
 Assert-BapWholeBridge $installBundle
+$installStage = 'Installed version / channel transition validation'
 Assert-BapInstallTransition $installBundle -ConfirmRecovery
 $installStage = 'Compatibility validation'
 $manifest = Join-Path $root 'artifacts/BetterAstralParty.compatibility.json'
@@ -153,7 +156,7 @@ if ($UpdateOnly) {
 $baseline=if($null -eq $loaderBefore){'null'}elseif($loaderBefore){'true'}else{'false'}
 $preparedReceipt=Invoke-BapWholeBridge $installBundle 'PrepareWholeReceipt' @([string]$installBundle.WholeObservation,[string]$baseline)
 if ($preparedReceipt -isnot [string]) { throw 'Invalid signed channel receipt response.' }
-$targets = @((@($installFiles | ForEach-Object { $_.Target }) + @($bepinexConfig, (Join-Path $GameRoot 'doorstop_config.ini'), $receiptPath)) | Sort-Object -Unique)
+$targets = @((@($installFiles | ForEach-Object { $_.Target }) + @($bepinexConfig, $receiptPath)) | Sort-Object -Unique)
 $installBytes = [long]0
 foreach ($file in $installFiles) {
     if (!(Test-Path -LiteralPath $file.Source -PathType Leaf)) { throw "Package file missing: $($file.Source)" }
@@ -223,11 +226,7 @@ if (Test-Path -LiteralPath $bepinexConfig) {
     [IO.File]::WriteAllText($bepinexConfig, "[Logging]`r`nUnityLogListening = false`r`n", [Text.UTF8Encoding]::new($false))
 }
 
-$doorstopPath = Join-Path $GameRoot 'doorstop_config.ini'
-$doorstopText = [IO.File]::ReadAllText($doorstopPath)
-$doorstopUpdated = [regex]::Replace($doorstopText, '(?m)^enabled\s*=\s*(true|false)\s*$', 'enabled=false', 1)
-$rollbackExpected[$doorstopPath] = Get-BapInstallHash ([Text.UTF8Encoding]::new($false).GetBytes($doorstopUpdated))
-& (Join-Path $PSScriptRoot 'set-loader-mode.ps1') -Mode Vanilla -GameRoot $GameRoot 6>$null
+    # Approved fresh loader bytes are ON; existing configuration is migrated only by a guarded Mod launch.
 foreach ($p in $installBundle.Expected.Keys) {
     if ((Get-FileHash -LiteralPath (Join-Path $GameRoot $p)).Hash -cne $installBundle.Expected[$p]) { throw '복사 후 설치 파일이 검증된 묶음과 다릅니다. / Installed payload differs from the verified bundle.' }
 }
@@ -275,6 +274,7 @@ Write-Host "Steam에서 'Astral Party - Mod'를 실행하세요."
 }
 } catch {
     $failure = $_
+    $failure.Exception.Data['BapInstallStage']=$installStage
     if ($installBundle) { Write-BapInstallerError $installBundle $diagnosticPhase $failure.Exception }
     $null = Write-InstallFailure $failure $installStage $root $GameRoot
     throw $failure

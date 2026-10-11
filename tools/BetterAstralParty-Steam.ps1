@@ -5,12 +5,15 @@ try {
     $env:PSModulePath = Join-Path $PSHOME 'Modules'
     if (!$env:SteamGameId) { throw 'Open Astral Party - Mod from your Steam library.' }
     if (Get-Process AstralParty_INT,AstralParty_CN -ErrorAction SilentlyContinue) { throw 'Close Astral Party before launching the mod.' }
-    # Shared read-only recovery gate and common updater lock survive until the game exits.
+    # Recovery gate and common updater lock survive until the game exits.
     # Loading a byte snapshot keeps the launcher file available to later maintenance.
-    $launchAssembly = [Reflection.Assembly]::Load([IO.File]::ReadAllBytes((Join-Path $PSScriptRoot 'BetterAstralParty-Launcher.exe')))
-    $guardMethod = $launchAssembly.GetType('SteamLauncher').GetMethod('GuardModLaunch', [Reflection.BindingFlags]'Public,Static')
+    $launchBytes = [IO.File]::ReadAllBytes((Join-Path $PSScriptRoot 'BetterAstralParty-Launcher.exe'))
+    $snapshotHasher = [Security.Cryptography.SHA256]::Create()
+    try { $launchHash = [BitConverter]::ToString($snapshotHasher.ComputeHash($launchBytes)).Replace('-','') } finally { $snapshotHasher.Dispose() }
+    $launchAssembly = [Reflection.Assembly]::Load($launchBytes)
+    $guardMethod = $launchAssembly.GetType('SteamLauncher').GetMethod('GuardModLaunchVerified', [Reflection.BindingFlags]'Public,Static')
     if (!$guardMethod) { throw '업데이트 안전 검사 런처가 필요합니다. / Upgrade the launcher before mod launch.' }
-    $updateLaunchLease = $guardMethod.Invoke($null, @($PSScriptRoot))
+    $updateLaunchLease = $guardMethod.Invoke($null, @($PSScriptRoot,$launchHash))
     # The checker runs in a child process because it uses exit codes.
     $checkStart = [Diagnostics.ProcessStartInfo]::new()
     $checkStart.FileName = "$PSHOME/powershell.exe"
@@ -26,6 +29,10 @@ try {
         $check.WaitForExit()
         if ($check.ExitCode -ne 0) { throw "Compatibility check failed (exit $($check.ExitCode)). $($stderr.Result) $($stdout.Result)" }
     } finally { $check.Dispose() }
+    $enableLoader = $launchAssembly.GetType('SteamLauncher').GetMethod('EnableSharedLoader', [Reflection.BindingFlags]'Public,Static')
+    if (!$enableLoader) { throw 'Shared-loader launch migration requires the updated launcher.' }
+    $enableArguments = [object[]]@($PSScriptRoot, $updateLaunchLease)
+    $null = $enableLoader.Invoke($null, $enableArguments)
     # Match Steamworks AND the overlay before the game creates its rendering device.
     # Otherwise Steam injects an overlay for the non-Steam shortcut, not the payment's App ID.
     # These values affect only this launcher process and its game child, never Steam settings.

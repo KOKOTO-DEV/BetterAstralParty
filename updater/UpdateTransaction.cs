@@ -110,7 +110,7 @@ namespace BetterAstralParty.Updating
             return Encoding.ASCII.GetBytes("BetterAstralParty.HighWater/v1\nroot=" + fence.RootIdentity.Text + "\nversion=" + descriptor.Version + "\ndescriptor=" + descriptor.DescriptorSha256 + "\n");
         }
         private static UpdateContext Context(UpdateContext selection, string installed, string? highest, string? channelDescriptor = null)
-        { return new UpdateContext(selection.Repository, selection.Channel, installed, selection.ReleaseTag, selection.ReleaseId, selection.AssetId, selection.Platform, highest, selection.RepositoryId, selection.Transition, channelDescriptor); }
+        { return new UpdateContext(selection.Repository, selection.Channel, installed, selection.ReleaseTag, selection.ReleaseId, selection.AssetId, selection.Platform, highest, selection.RepositoryId, selection.Transition, channelDescriptor == "-" ? null : channelDescriptor); }
         private static ReceiptChannelState Channels(WindowsFileFence fence, InstallReceipt receipt, string original, WindowsFileFence.FileLease? water, string receiptHash, UpdateContext selection)
         {
             if (receipt.Channels != null) {
@@ -247,7 +247,7 @@ namespace BetterAstralParty.Updating
                 var plugin = plan.Items.Find(item => item.Path == UpdateTrust.PluginPath)!;
                 var installedMetadata = InstalledPluginMetadata.Read(Read(plugin.Target ?? throw Bad(), UpdateTrust.MaxFileBytes)); plan.Original = installedMetadata.Version;
                 var channels = selection.RepositoryId > 0 ? Channels(fence, receipt, plan.Original, plan.Items[9].Target, plan.Items[8].OldHash, selection) : null;
-                var context = Context(selection, plan.Original, channels == null ? Water(plan.Items[9].Target, fence) : channels.Floor(selection), channels == null ? null : selection.Channel == "Stable" ? channels.StableDescriptor == "-" ? null : channels.StableDescriptor : channels.BetaDescriptor);
+                var context = Context(selection, plan.Original, channels == null ? Water(plan.Items[9].Target, fence) : channels.Floor(selection), channels == null ? null : selection.Channel == "Stable" ? channels.StableDescriptor : channels.BetaDescriptor);
                 var verified = trust.VerifyDescriptor(descriptor, keyId, signature, context); var payload = UpdatePackage.VerifyPayload(zip, verified);
                 plan.Protocol = verified.Protocol;
                 if (receipt.Channels != null && (installedMetadata.UpdateProtocol != 2 || installedMetadata.SettingsSchema != 1)) throw Bad();
@@ -318,7 +318,7 @@ namespace BetterAstralParty.Updating
                 for (var i = 0; i < 8; i++) if (plan.Items[i].OldId != "-" && plan.Items[i].OldHash != originalReceipt.Files[plan.Items[i].Path]) throw Bad();
                 var waterItem = plan.Items[9]; var oldWater = waterItem.OldId == "-" ? null : Original(waterItem);
                 var channels = selection.RepositoryId > 0 ? Channels(fence, originalReceipt, plan.Original, oldWater, plan.Items[8].OldHash, selection) : null;
-                var context = Context(selection, plan.Original, channels == null ? Water(oldWater, fence) : channels.Floor(selection), channels == null ? null : selection.Channel == "Stable" ? channels.StableDescriptor == "-" ? null : channels.StableDescriptor : channels.BetaDescriptor);
+                var context = Context(selection, plan.Original, channels == null ? Water(oldWater, fence) : channels.Floor(selection), channels == null ? null : selection.Channel == "Stable" ? channels.StableDescriptor : channels.BetaDescriptor);
                 var descriptor = trust.VerifyDescriptor(Read(evidence[0], UpdateTrust.MaxDescriptorBytes), Encoding.ASCII.GetString(Read(evidence[2], 40)), Read(evidence[1], UpdateTrust.MaxSignatureBytes), context);
                 if (descriptor.DescriptorSha256 != plan.Descriptor || descriptor.Files.Count != 8) throw Bad();
                 if (descriptor.Protocol != plan.Protocol) throw Bad(); Settings(fence, plan, leases, true);

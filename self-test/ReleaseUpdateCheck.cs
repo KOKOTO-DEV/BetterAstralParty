@@ -70,6 +70,7 @@ internal static class ReleaseUpdateCheck
         FeedIdentityCheck.Run();
         HttpTransportCheck.Run();
         VersionsAndText();
+        UpdateGenerationCheck.Run();
         AsyncChecks().GetAwaiter().GetResult();
         ModText.Select("한국어");
         Console.WriteLine($"Release updates: {_checks} production-code assertions passed (mock HTTP only; no credentials, live GitHub or game UI).");

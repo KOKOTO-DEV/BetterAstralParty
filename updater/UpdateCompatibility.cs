@@ -41,7 +41,8 @@ namespace BetterAstralParty.Updating
                 var expected=new List<string>();foreach(var catalog in catalogs) {
                     var name=catalog as string;if(name==null || !Regex.IsMatch(name,@"\Acatalog[^/\\:]*\.(json|hash)\z") || expected.Contains(name)) throw Bad();expected.Add(name);
                 }
-                expected.Sort(StringComparer.Ordinal);check._catalogs=string.Join("|",expected);if(check.Catalogs()!=check._catalogs) throw Bad();
+                expected.Sort(StringComparer.Ordinal);check._catalogs=check.Catalogs();
+                if(!CatalogInventory.Matches(expected.ToArray(),check._catalogs.Length==0?new string[0]:check._catalogs.Split('|'))) throw Bad();
                 var seen=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach(var raw in entries) {
                     var entry=raw as Dictionary<string,object?>;if(entry==null || entry.Count!=4) throw Bad();
@@ -60,6 +61,7 @@ namespace BetterAstralParty.Updating
                 }
                 foreach(var required in new[]{"game/AstralParty_INT.exe","game/GameAssembly.dll","game/UnityPlayer.dll","game/winhttp.dll","game/AstralParty_INT_Data/StreamingAssets/aa/catalog.bundle","game/AstralParty_INT_Data/data.unity3d","game/BepInEx/core/BepInEx.Core.dll"}) if(!seen.Contains(required)) throw Bad();
                 foreach(var name in expected) if(!seen.Contains("cache/"+name)) throw Bad();
+                if(check._catalogs!=string.Join("|",expected) && !seen.Contains("game/AstralParty_INT_Data/StreamingAssets/aa/settings.json")) throw Bad();
                 check.Recheck();return check;
             } catch {check?.Dispose();throw Bad();}
         }

@@ -1,5 +1,7 @@
 ﻿function Write-InstallFailure($Failure, [string]$Stage, [string]$PackageRoot, [string]$GameRoot, [string]$Operation = 'Installation') {
     # No transcript, registry dump, Steam account ID or environment dump.
+    $originStage=$Failure.Exception.Data['BapInstallStage']
+    if ($originStage -is [string] -and $originStage.Length -le 160 -and $originStage -notmatch '[\r\n]') { $Stage=$originStage }
     $text = @(
         "BetterAstralParty $Operation failure"
         "Time: $([DateTimeOffset]::Now.ToString('o'))"

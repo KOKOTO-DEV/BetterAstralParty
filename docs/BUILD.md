@@ -25,6 +25,12 @@ Do not substitute assemblies from an unrelated game or loader version.
 
 ## Plugin, launcher and helper
 
+The launcher embeds the three public, previously signed helper inputs pinned by
+helper-delivery.json. Include helper-bootstrap/current when exporting source.
+Keep their exact bytes: reproducing the launcher requires no private key or
+new signature. The helper component version is independent of the plugin
+version; an authenticated newer installed helper is preserved.
+
 Use the explicit compilation commands below for a public source checkout. They
 build the plugin, launcher and helper without the developer workspace's local
 maintenance checks or extracted game-research files. The source archive is not
@@ -65,23 +71,3 @@ archives and follow their upstream build instructions. SOURCES.md documents the
 removed proprietary reference DLLs and replacement/relinking procedure. No game
 license is supplied by this source export, and BetterAstralParty imposes no extra
 restriction on modifying or debugging those libraries.
-
-## Release regression sources
-
-The source release includes the self-test project and the hand-layout, field-camera,
-native-bridge, card-scan and persistent-session regression sources used for this
-release. These tests are optional and do not install the mod, publish a release
-or include your personal GitHub credentials. Use a fresh output directory.
-
-Some UI/native-metadata runners need local references at
-.research/extracted/AstralParty.Runtime.dll.dll, Cinemachine.dll.dll,
-UnityEngine.CoreModule.dll.dll and mscorlib.dll.dll, plus Mono.Cecil.dll from
-the matching local .deps/bepinex loader. These game/Unity assemblies are not
-redistributed. Prepare those references from your own matching game installation.
-The persistent-session and card-scan runners also use an existing local
-.dotnet SDK 8.0.425 with .NET 6/8 reference packs; no SDK is bundled.
-
-The self-test project's default full run contains historical development checks.
-For the current release feed identity and update-discovery regression, use its
---release-updates-only option with the matching local dependencies. Fake native objects
-and inert credential strings in fixtures are test inputs, not real credentials.

@@ -45,7 +45,15 @@ internal static class ReleaseSessionCheck
         MonotonicLifetimeChecks();
         var now = DateTimeOffset.UtcNow;
         var elapsed = TimeSpan.Zero;
-        Check(!PrivateUpdateApproval.CredentialInputEnabled && !UpdateTrust.Production().Configured && ProductionUpdateKeys.Read().Length == 0, "production approval and pins remain absent");
+        var productionPins = ProductionUpdateKeys.Read();
+        Check(PrivateUpdateApproval.CredentialInputEnabled && UpdateTrust.Production().Configured && productionPins.Length == 1,
+            "approved production retains its single compiled public pin");
+        var pinned = productionPins[0].Parameters();
+        var pinnedHash = UpdateTrust.Hash(ProductionUpdateKeys.Spki(pinned));
+        Check(productionPins[0].Id == "bap-trial-20261002" && pinnedHash == "99ACE415879EF2FCA89C741F4F93838D8469953A4787C47C0C1A16BEF0B2A2E7",
+            "production public key remains the independently reviewed pin");
+        Check(pinned.D == null && pinned.P == null && pinned.Q == null && pinned.DP == null && pinned.DQ == null && pinned.InverseQ == null,
+            "production parameters contain no private key material");
         Check(MemoryReleaseAuthentication.ValidToken(Inert), "inert fixture lexical format");
         foreach (var bad in new[] { "", "ghp_INERT_TEST_ONLY_DO_NOT_USE_00000", Inert + "\n", " " + Inert, Inert + ":", new string('a', 257) })
             Check(!MemoryReleaseAuthentication.ValidToken(bad), "unsafe input rejected without echo");
@@ -53,34 +61,40 @@ internal static class ReleaseSessionCheck
         {
             var id = auth.CacheIdentity;
             Check(id.Length == 32 && !id.Contains(Inert) && auth.ToString() == "MemoryReleaseAuthentication", "opaque identity and safe stringification");
-            foreach (var url in new[] { "https://api.github.com/repos/TSM701/BetterAstralParty/releases?per_page=100", "https://api.github.com/repos/TSM701/BetterAstralParty/releases?per_page=100&page=2", "https://api.github.com/repos/TSM701/BetterAstralParty/releases?&per_page=100", "https://api.github.com/repos/TSM701/BetterAstralParty/releases/assets/902" })
+            foreach (var url in new[] { "https://api.github.com/repos/TSM701/BetterAstralPartyBeta/releases?per_page=100", "https://api.github.com/repos/TSM701/BetterAstralPartyBeta/releases?per_page=100&page=2", "https://api.github.com/repos/TSM701/BetterAstralPartyBeta/releases?&per_page=100", "https://api.github.com/repos/TSM701/BetterAstralPartyBeta/releases/assets/902" })
             {
                 using var request = new HttpRequestMessage(HttpMethod.Get, url);
                 var allowed = !url.Contains("?&");
                 Check(auth.TryAuthorize(request) == allowed && (request.Headers.Authorization != null) == allowed, "exact allowed URI/query boundary");
             }
             foreach (var url in new[] {
-                "http://api.github.com/repos/TSM701/BetterAstralParty/releases?per_page=100", "https://api.github.com:443/repos/TSM701/BetterAstralParty/releases?per_page=100",
-                "https://api.github.com/repos/OTHER/BetterAstralParty/releases?per_page=100", "https://api.github.com/user", "https://api.github.com/repos/TSM701/BetterAstralParty/releases?per_page=100&page=0",
-                "https://api.github.com/repos/TSM701/BetterAstralParty/releases?per_page=100&page=2&x=1", "https://api.github.com/repos/TSM701/BetterAstralParty/releases/assets/0",
-                "https://api.github.com/repos/TSM701/BetterAstralParty/releases/assets/902?x=1", "https://release-assets.githubusercontent.com/file", "https://api.github.com/repos/TSM701/BetterAstralParty/releases/assets/%39%30%32"
+                "http://api.github.com/repos/TSM701/BetterAstralPartyBeta/releases?per_page=100", "https://api.github.com:443/repos/TSM701/BetterAstralPartyBeta/releases?per_page=100",
+                "https://api.github.com/repos/OTHER/BetterAstralParty/releases?per_page=100", "https://api.github.com/user", "https://api.github.com/repos/TSM701/BetterAstralPartyBeta/releases?per_page=100&page=0",
+                "https://api.github.com/repos/TSM701/BetterAstralPartyBeta/releases?per_page=100&page=2&x=1", "https://api.github.com/repos/TSM701/BetterAstralPartyBeta/releases/assets/0",
+                "https://api.github.com/repos/TSM701/BetterAstralPartyBeta/releases/assets/902?x=1", "https://release-assets.githubusercontent.com/file", "https://api.github.com/repos/TSM701/BetterAstralPartyBeta/releases/assets/%39%30%32",
+                "https://api.github.com/repos/TSM701/BetterAstralParty/releases?per_page=100", "https://api.github.com/repos/TSM701/BetterAstralParty/releases/assets/902"
             }) { using var request = new HttpRequestMessage(HttpMethod.Get, url); Check(!auth.TryAuthorize(request) && request.Headers.Authorization == null, "bearer cannot leave exact repo API"); }
-            using var post = new HttpRequestMessage(HttpMethod.Post, "https://api.github.com/repos/TSM701/BetterAstralParty/releases?per_page=100");
+            using var post = new HttpRequestMessage(HttpMethod.Post, "https://api.github.com/repos/TSM701/BetterAstralPartyBeta/releases?per_page=100");
             Check(!auth.TryAuthorize(post), "write verbs refused");
             elapsed += TimeSpan.FromMinutes(2); Check(auth.CacheIdentity == "" && !auth.TryAuthorize(post), "expired session loses identity/bearer");
         }
         using (var credential = new ReleaseCredential(Inert)) { Check(credential.ToString() == "ReleaseCredential" && credential.Take() == Inert && credential.Take() == null, "credential consumed once without ToString leak"); }
-        using (var productionUpdates = ReleaseUpdates.Production("1.0.0-dev", "TSM701/BetterAstralParty"))
-        using (var automatic = new AutomaticUpdates(UpdateDownloads.Production()))
-        using (var session = PrivateReleaseSession.Production(productionUpdates, automatic))
+        using (var gatedHandler = new Handler()) using (var gatedClient = new HttpClient(gatedHandler))
+        using (var gatedUpdates = new ReleaseUpdates("1.0.0-dev", ReleaseFeedPolicy.BetaRepository, gatedClient))
+        using (var automatic = new AutomaticUpdates(new UpdateDownloads(new UpdateTrust(Array.Empty<TrustedUpdateKey>()), null, gatedHandler)))
+        using (var session = new PrivateReleaseSession(gatedUpdates, automatic, () => false, configureUpdates: auth => gatedUpdates.Configure(gatedClient, auth)))
         {
             var input = new Input(); session.Connect(input, false); session.Poll();
-            Check(input.Calls == 0 && !session.CanConnect && session.Status == ReleaseSessionStatus.NotConfigured, "unapproved product never invokes input");
-            Check(await new WindowsReleaseCredentialInput().Read(false, CancellationToken.None) == null, "Windows native prompt gate checked before PInvoke");
+            Check(input.Calls == 0 && !session.CanConnect && session.Status == ReleaseSessionStatus.NotConfigured && gatedHandler.Calls == 0,
+                "revoked approval never invokes credential input or transport");
+            Check(WindowsReleaseCredentialInput.TryEnterPrompt(), "fixture occupies native input gate without a prompt");
+            try { Check(await new WindowsReleaseCredentialInput().Read(false, CancellationToken.None) == null, "occupied input gate returns before native PInvoke"); }
+            finally { WindowsReleaseCredentialInput.LeavePrompt(); }
             Check(WindowsReleaseCredentialInput.Flags == 1, "no save checkbox or persistence flag");
         }
         using var handler = new Handler(); using var client = new HttpClient(handler);
-        using var updates = new ReleaseUpdates("1.0.0-dev", "TSM701/BetterAstralParty", client);
+        using var updates = new ReleaseUpdates("1.0.0-dev", ReleaseFeedPolicy.BetaRepository, client);
+        updates.SetChannel(ReleaseChannel.Beta);
         using var downloads = new AutomaticUpdates(UpdateDownloads.Production());
         var allowedPolicy = true;
         using var coordinator = new PrivateReleaseSession(updates, downloads, () => allowedPolicy, () => elapsed, auth => updates.Configure(client, auth));
@@ -131,7 +145,8 @@ internal static class ReleaseSessionCheck
         Check(spki.Length == 422 && spki[0] == 48, "public-only canonical 3072 SPKI encoding");
         ProductionUpdateKeys.Review("inert-public-only", Convert.ToBase64String(publicOnly.Modulus!), UpdateTrust.Hash(spki));
         try { ProductionUpdateKeys.Review("inert-public-only", Convert.ToBase64String(publicOnly.Modulus!), new string('0',64)); Check(false,"wrong pin accepted"); } catch(ArgumentException) { Check(true,"wrong public fingerprint rejected"); }
-        Check(!UpdateTrust.Production().Configured, "reviewed fixture public bytes are never enrolled in production");
+        Check(ProductionUpdateKeys.Read().Length == 1 && UpdateTrust.Hash(ProductionUpdateKeys.Spki(ProductionUpdateKeys.Read()[0].Parameters())) == pinnedHash,
+            "reviewed fixture public bytes are never enrolled in production");
         foreach (var language in new[] { "English", "한국어" })
         {
             ModText.Select(language);
@@ -143,16 +158,17 @@ internal static class ReleaseSessionCheck
         foreach (var failure in new[] { HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden, HttpStatusCode.NotFound })
         {
             using var metadataHandler = new Handler(); using var metadataClient = new HttpClient(metadataHandler);
-            using var metadata = new ReleaseUpdates("1.0.0-dev", "TSM701/BetterAstralParty", metadataClient);
+            using var metadata = new ReleaseUpdates("1.0.0-dev", ReleaseFeedPolicy.BetaRepository, metadataClient);
+            metadata.SetChannel(ReleaseChannel.Beta);
             using var assetHandler = new Handler { Status = failure };
             var fixtureTrust = new UpdateTrust(new[] { new TrustedUpdateKey("inert-public-only", publicOnly) });
-            using var automatic = new AutomaticUpdates(new UpdateDownloads(fixtureTrust, null, assetHandler), new Handoff());
+            using var automatic = new AutomaticUpdates(new UpdateDownloads(fixtureTrust, null, assetHandler, feed: ReleaseFeedPolicy.Beta), new Handoff());
             using var session = new PrivateReleaseSession(metadata, automatic, () => true, () => elapsed, auth => metadata.Configure(metadataClient, auth));
             session.Connect(new Input(), false); await Until(session.Poll, () => session.Status != ReleaseSessionStatus.AwaitingInput);
-            automatic.Context(new UpdateDownloadRequest(new UpdateContext("TSM701/BetterAstralParty","Beta","1.0.0-dev","1.0.0-rc.1",901,902,UpdateTrust.PlatformId),903,904));
+            automatic.Context(new UpdateDownloadRequest(new UpdateContext(ReleaseFeedPolicy.BetaRepository,"Beta","1.0.0-dev","1.0.0-rc.1",901,902,UpdateTrust.PlatformId),903,904));
             await Until(() => automatic.Tick(now), () => automatic.AuthenticationLost);
             session.Poll(); Check(assetHandler.Calls == 1 && !automatic.CanDownload && metadata.Result.Status == ReleaseUpdateStatus.NotConfigured,
-                "download auth/access failure retires metadata/download/handoff together");
+                $"download auth/access failure retires metadata/download/handoff together: calls={assetHandler.Calls}; canDownload={automatic.CanDownload}; metadata={metadata.Result.Status}; session={session.Status}");
             Check(session.Status == (failure == HttpStatusCode.Unauthorized ? ReleaseSessionStatus.AuthenticationRequired : ReleaseSessionStatus.AccessUnavailable), "download failure wording classified");
         }
         using (var exitHandler = new Handler()) using (var exitClient = new HttpClient(exitHandler))

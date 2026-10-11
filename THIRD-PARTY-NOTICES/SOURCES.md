@@ -2,7 +2,8 @@
 
 The whole package includes 224 clean loader/runtime files from BepInEx build
 788, commit 5b766a3b7f6c164d4798924a93f3acf4db769d06. The DLLs are unchanged.
-Only doorstop_config.ini has enabled=false for vanilla launch.
+doorstop_config.ini also retains unmodified upstream bytes, with the shared loader enabled.
+The original Steam launch disables only BetterAstralParty, not other installed mods.
 
 component-matrix.json binds each packaged loader file to its SHA-256, component,
 version, license text and source. The mod's root MIT LICENSE covers only

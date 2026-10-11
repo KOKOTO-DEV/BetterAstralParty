@@ -146,9 +146,10 @@ function Get-BapCleanReinstallPlan($Bundle) {
     $proof=Read-InstallRecoveryJournal $Bundle.GameRoot -AllowedTargets $allowed -CompletedBackupId $id
     $rows=@{}; $pins=@{$completed.FullName=$proof.JournalSha256}
     foreach ($entry in $proof.State.Entries) {
-        if (!$entry.Existed) { throw 'Removal backup must contain the former files.' }
-        $rows[$entry.Target.Substring($Bundle.GameRoot.Length+1).Replace('\','/')]=$entry
-        $pins[$entry.Backup]=$entry.Hash
+        $name=$entry.Target.Substring($Bundle.GameRoot.Length+1).Replace('\','/')
+        if (!$entry.Existed -and (!($Bundle.Expected.Keys -ccontains $name) -or $name -ceq 'BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll')) { throw 'Removal backup must contain the former core files.' }
+        $rows[$name]=$entry
+        if ($entry.Existed) { $pins[$entry.Backup]=$entry.Hash }
     }
     $required=@($Bundle.Expected.Keys)+@('BetterAstralParty.install.json','BetterAstralParty-UpdateHelper.exe','BetterAstralParty.helper.receipt')
     foreach ($path in $required) { if (!$rows.ContainsKey($path)) { throw ('Removal backup is incomplete: '+$path) } }
@@ -158,7 +159,7 @@ function Get-BapCleanReinstallPlan($Bundle) {
     if (!$validator) { throw 'Approved receipt validator required.' }
     $arguments=[object[]]::new(1); $arguments[0]=[byte[]]$receiptBytes; $null=$validator.Invoke($null,$arguments)
     $receipt=Read-BapInstallJson $receiptBytes
-    foreach ($file in $receipt.files) { if ($rows[$file.path].Hash -cne $file.sha256) { throw 'Removal backup differs from the former receipt.' } }
+    foreach ($file in $receipt.files) { if ($rows[$file.path].Existed -and $rows[$file.path].Hash -cne $file.sha256) { throw 'Removal backup differs from the former receipt.' } }
     $pluginBytes=Read-BapInstallFile $rows['BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll'].Backup
     if ((Get-BapInstallHash $pluginBytes) -cne $rows['BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll'].Hash) { throw 'Removal plugin changed during validation.' }
     $plugin=Read-BapInstallMetadata $pluginBytes

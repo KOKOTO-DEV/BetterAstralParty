@@ -66,7 +66,12 @@ namespace BetterAstralParty.Updating {
         private static WindowsFileFence.FileLease Lock(WindowsFileFence fence) {
             try {return fence.OpenFile("BetterAstralParty.update.lock",true);} catch(ApplySafetyException error) when(error.NativeError==2) {return fence.OpenFile("BetterAstralParty.update.lock",true,true);}
         }
-        private static void Write(WindowsFileFence fence,string path,byte[] bytes) { using(var file=fence.OpenFile(path,true,true)) {file.Stream.Write(bytes,0,bytes.Length);file.Flush();} }
+        internal static void Write(WindowsFileFence fence,string path,byte[] bytes) {
+            // Publish only flushed whole files; retain interrupted temporary evidence, never overwrite.
+            if(!Regex.IsMatch(path,@"\Abap-helper(?:auto)?-[0-9a-f]{32}/[a-z-]+\z"))throw Bad();
+            var pending=path+"-pending-"+Guid.NewGuid().ToString("N");
+            using(var file=fence.OpenFile(pending,true,true)){file.Stream.Write(bytes,0,bytes.Length);file.Flush();file.RenameTo(fence,path);file.Flush();}
+        }
         private static byte[] ReceiptBytes(WindowsFileFence fence,HelperDescriptor descriptor,string imageId) { return Encoding.ASCII.GetBytes("BetterAstralParty.HelperReceipt/v1\nroot="+fence.RootIdentity.Text+"\nimage-id="+imageId+"\nversion="+descriptor.Version+"\nsha256="+descriptor.Sha256+"\ndescriptor="+descriptor.DescriptorHash+"\nkey-id="+descriptor.KeyId+"\n"); }
         internal static bool Eligible(WindowsFileFence fence,WindowsProcessGuard.LaunchLease? processes=null) {
             try { using(var file=fence.OpenFile(InstallReceipt.Path)) {
@@ -84,10 +89,14 @@ namespace BetterAstralParty.Updating {
         }
         internal static string? ArchivedFingerprint(WindowsFileFence fence,UpdateTrust trust,string imagePath,string receiptPath) {
             foreach(var path in new[]{imagePath,receiptPath})
-                if(path!=HelperDescriptor.Image && path!=Receipt && !Regex.IsMatch(path,@"\Abap-helperbridge-[0-9a-f]{32}/old-(?:image|receipt)\z"))throw Bad();
+                if(path!=HelperDescriptor.Image && path!=Receipt && !Regex.IsMatch(path,@"\Abap-helper(?:bridge|auto)-[0-9a-f]{32}/old-(?:image|receipt)\z"))throw Bad();
             return FingerprintAt(fence,trust,imagePath,receiptPath,1);
         }
         private static string? FingerprintAt(WindowsFileFence fence,UpdateTrust trust,string imagePath,string receiptPath,int minimumProtocol) {
+            var descriptor=AuthenticatedAt(fence,trust,imagePath,receiptPath);
+            return descriptor!=null && descriptor.Protocol>=minimumProtocol?descriptor.Sha256:null;
+        }
+        internal static HelperDescriptor? AuthenticatedAt(WindowsFileFence fence,UpdateTrust trust,string imagePath,string receiptPath) {
             if(!trust.Configured) return null;
             using(var image=MaybeLaunch(fence,imagePath)) using(var receipt=Maybe(fence,receiptPath)) {
                 if(image==null || receipt==null) return null;
@@ -107,7 +116,7 @@ namespace BetterAstralParty.Updating {
                         // Retained old helper journals bind different original object IDs. Verify only
                         // the exact plan for the current image/receipt, without erasing old evidence.
                         var verified=HelperDescriptor.Verify(trust,descriptor,DetachedSignature.Parse(signature),UpdateTicket.Read(image,UpdateTrust.MaxFileBytes));
-                        if(UpdateTrust.Hash(actual)==UpdateTrust.Hash(ReceiptBytes(fence,verified,image.Identity.Text))) return verified.Protocol>=minimumProtocol?verified.Sha256:null;
+                        if(UpdateTrust.Hash(actual)==UpdateTrust.Hash(ReceiptBytes(fence,verified,image.Identity.Text))) return verified;
                     } catch(ApplySafetyException error) when(error.NativeError==2) { }
                 }
                 throw Bad();

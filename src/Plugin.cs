@@ -11,7 +11,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Guid = "kr.betterastralparty.mod";
     public const string Name = "BetterAstralParty";
-    public const string Version = "1.1.2";
+    public const string Version = "1.1.3";
     public const int InstallBundleProtocol = 1;
     public const string UpdateProtocol = "2";
     public const string SettingsSchema = "1";
@@ -51,6 +51,13 @@ public sealed class Plugin : BasePlugin
 
     public override void Load()
     {
+        // Steam forwards arguments, not the launcher's environment; both are process-local.
+        if (Environment.GetEnvironmentVariable("BAP_COMPATIBILITY_CHECKED") != "1"
+            && !Environment.GetCommandLineArgs().Contains("--bap-compatibility-checked", StringComparer.Ordinal))
+        {
+            Log.LogInfo("BAP OFF for this launch; shared loader and other mods are unchanged.");
+            return;
+        }
         try
         {
             MinimalDiagnostics = DiagnosticOwner.Start(
@@ -135,15 +142,6 @@ public sealed class Plugin : BasePlugin
 
         DiagnosticHub.Stage(DiagnosticFeature.Loader, DiagnosticPhase.UpdateReadiness, DiagnosticOutcome.Completed);
         Logger = Log;
-        // An already-running Steam client cannot inherit the launcher's environment.
-        // The launcher passes this one-shot flag only after the same full compatibility check.
-        if (Environment.GetEnvironmentVariable("BAP_COMPATIBILITY_CHECKED") != "1"
-            && !Environment.GetCommandLineArgs().Contains("--bap-compatibility-checked", StringComparer.Ordinal))
-        {
-            DiagnosticHub.Gate(DiagnosticFeature.Loader, DiagnosticCode.CompatibilityBlocked);
-            Log.LogError("호환성 검사 없이 실행되어 모드를 중단합니다. BetterAstralParty-Mod.cmd를 사용하세요.");
-            return;
-        }
         // Keep the saved key so upgrades preserve each user's existing choice.
         MuteUnfocused = Config.Bind("환경", "비활성 창 음소거", true,
             "창 비활성화 시 음소거: 게임 창이 포커스를 잃으면 소리를 끄고 돌아오면 복원합니다. 저장된 게임 볼륨은 변경하지 않습니다. 기본 ON.");
