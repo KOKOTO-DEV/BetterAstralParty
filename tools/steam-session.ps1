@@ -24,20 +24,28 @@ function Get-BapSteamTargets([string]$SteamRoot) {
     foreach ($process in Get-Process -ErrorAction Stop) {
         if ($process.Id -eq $PID) { continue }
         try {
-            if ($process.HasExited) { continue }
-            if ($process.SessionId -ne $session) { continue }
-            $path = $process.Path
-            if (!$path) { continue }
-            $path = [IO.Path]::GetFullPath($path)
-            $client = $process.ProcessName -in @('steam','steamwebhelper','GameOverlayUI','steamerrorreporter','steamerrorreporter64') -and
+            $observed=Get-BapProcessObservation $process
+            if ($observed.Exited -eq $true) { continue }
+            if ($null -ne $observed.Session -and $observed.Session -ne $session) { continue }
+            $path = $observed.Path
+            if (!$path) {
+                if($observed.Name -notin @('steam','steamwebhelper','GameOverlayUI','steamerrorreporter','steamerrorreporter64')){continue}
+                throw (New-BapSteamFailure 'Cannot verify a live process path; nothing stopped.' 'ProcessObservationUnavailable' 'ShutdownObservation' ([pscustomobject]@{Facts=@(Get-BapProcessFact $observed $null $null)}))
+            }
+            $client = $observed.Name -in @('steam','steamwebhelper','GameOverlayUI','steamerrorreporter','steamerrorreporter64') -and
                 $path.StartsWith($steamPath, [StringComparison]::OrdinalIgnoreCase)
             $game = @($gameDirs.Keys | Where-Object { $path.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
             if ($client -or $game) {
-                [pscustomobject]@{Id=$process.Id; Path=$path; Started=$process.StartTime; Session=$session; Name=$process.ProcessName; Client=$client}
+                if($null -eq $observed.Session -or !$observed.Started -or $null -eq $observed.Exited){
+                    $match=if($null -eq $observed.Session){$null}else{$observed.Session -eq $session}
+                    throw (New-BapSteamFailure 'Cannot verify a live process identity; nothing stopped.' 'ProcessObservationUnavailable' 'ShutdownObservation' ([pscustomobject]@{Facts=@(Get-BapProcessFact $observed $true $match)}))
+                }
+                [pscustomobject]@{Id=$observed.Id; Path=$path; Started=$observed.Started; Session=$session; Name=$observed.Name; Client=$client}
             }
         } catch {
-            if ($process.HasExited) { continue }
-            throw "Cannot verify process $($process.Id); nothing stopped. $($_.Exception.Message)"
+            $failure=$_
+            try { if((Get-BapProcessObservation $process).Exited -eq $true){continue} } catch {}
+            throw $failure
         }
     }
 }
@@ -47,27 +55,30 @@ function Stop-BapVerifiedProcess($Target) {
     if (!$current) { return }
     $path = $null; $started = $null; $sameSession = $null
     try {
-        if ($current.HasExited) { return }
-        $path = $current.Path
-        $started = $current.StartTime
-        $sameSession = $current.SessionId -eq $Target.Session
-        if (!$path -or !$started -or $path -ne $Target.Path -or $started -ne $Target.Started -or !$sameSession) {
-            $fact = [pscustomobject]@{pid=[int]$Target.Id; sessionMatch=$sameSession; pathAvailable=[bool]$path; pathMatch=$(if ($path) { $path -eq $Target.Path } else { $null }); startAvailable=[bool]$started; startedUtc=$(if ($started) { $started.ToUniversalTime().ToString('o') } else { $null })}
+        $observed=Get-BapProcessObservation $current
+        if ($observed.Exited -eq $true) { return }
+        $path = $observed.Path
+        $started = $observed.Started
+        $sameSession = if($null -eq $observed.Session){$null}else{$observed.Session -eq $Target.Session}
+        if (!$path -or !$started -or $path -ne $Target.Path -or $started -ne $Target.Started -or !$sameSession -or $null -eq $observed.Exited) {
+            $match=if($path){$path -eq $Target.Path}else{$null}
+            $fact = Get-BapProcessFact $observed $match $sameSession
             throw (New-BapSteamFailure "Process identity changed ($($Target.Id)); not terminated. PathAvailable=$([bool]$path); StartAvailable=$([bool]$started); PathMatch=$($path -eq $Target.Path); StartMatch=$($started -eq $Target.Started)." 'ProcessIdentityChanged' 'ProcessIdentity' ([pscustomobject]@{Facts=@($fact)}))
         }
         Stop-Process -InputObject $current -Force -ErrorAction Stop
         if (!$current.WaitForExit(5000)) { throw "Process did not exit ($($Target.Id))." }
     } catch {
+        $failure=$_
         # Steam's children may exit after enumeration, during identity reads or termination.
         # Suppress only a confirmed exit on this process object, never an unknown/live PID.
-        if ($current.HasExited) { return }
-        if (!$_.Exception.Data.Contains('BapSteamDiagnostic')) {
+        try { if((Get-BapProcessObservation $current).Exited -eq $true){return} } catch {}
+        if (!$failure.Exception.Data.Contains('BapSteamDiagnostic')) {
             try {
                 $fact = [pscustomobject]@{pid=[int]$Target.Id;sessionMatch=$sameSession;pathAvailable=[bool]$path;pathMatch=$(if ($path) { $path -eq $Target.Path } else { $null });startAvailable=[bool]$started;startedUtc=$(if ($started) { $started.ToUniversalTime().ToString('o') } else { $null })}
-                $_.Exception.Data['BapSteamDiagnostic'] = (New-BapSteamFailure '' 'ProcessTerminationFailed' 'ProcessTermination' ([pscustomobject]@{Facts=@($fact)})).Data['BapSteamDiagnostic']
+                $failure.Exception.Data['BapSteamDiagnostic'] = (New-BapSteamFailure '' 'ProcessTerminationFailed' 'ProcessTermination' ([pscustomobject]@{Facts=@($fact)})).Data['BapSteamDiagnostic']
             } catch { }
         }
-        throw
+        throw $failure
     }
 }
 
@@ -86,16 +97,19 @@ function Get-BapGameTargets([string]$GameRoot) {
     $directory = [IO.Path]::GetFullPath($GameRoot).TrimEnd('\')
     foreach ($process in Get-Process -Name AstralParty_INT,AstralParty_CN,BetterAstralParty-Launcher -ErrorAction SilentlyContinue) {
         try {
-        if ($process.HasExited) { continue }
+        $observed=Get-BapProcessObservation $process
+        if ($observed.Exited -eq $true) { continue }
         # An identically named executable outside the selected installation is not ours.
-        if (!$process.Path) { throw '게임 프로세스 경로 확인 불가 / Cannot verify game process path; nothing stopped.' }
-        if ((Split-Path -Parent $process.Path) -ne $directory -or
-            $process.SessionId -ne [Diagnostics.Process]::GetCurrentProcess().SessionId) { continue }
-        if ((Split-Path -Leaf $process.Path) -notin @('AstralParty_INT.exe','AstralParty_CN.exe','BetterAstralParty-Launcher.exe')) { continue }
-        [pscustomobject]@{Id=$process.Id; Path=$process.Path; Started=$process.StartTime; Session=$process.SessionId; Name=$process.ProcessName}
+        if (!$observed.Path) { throw '게임 프로세스 경로 확인 불가 / Cannot verify game process path; nothing stopped.' }
+        if ((Split-Path -Parent $observed.Path) -ne $directory) { continue }
+        if($null -eq $observed.Session -or !$observed.Started -or $null -eq $observed.Exited){throw 'Cannot verify live game process identity; nothing stopped.'}
+        if ($observed.Session -ne [Diagnostics.Process]::GetCurrentProcess().SessionId) { continue }
+        if ((Split-Path -Leaf $observed.Path) -notin @('AstralParty_INT.exe','AstralParty_CN.exe','BetterAstralParty-Launcher.exe')) { continue }
+        [pscustomobject]@{Id=$observed.Id; Path=$observed.Path; Started=$observed.Started; Session=$observed.Session; Name=$observed.Name}
         } catch {
-            if ($process.HasExited) { continue }
-            throw
+            $failure=$_
+            try { if((Get-BapProcessObservation $process).Exited -eq $true){continue} } catch {}
+            throw $failure
         }
     }
 }
@@ -105,10 +119,12 @@ function Wait-BapUpdateHelper([string]$GameRoot) {
     while ($true) {
         $running = @()
         foreach ($process in Get-Process -Name BetterAstralParty-UpdateHelper -ErrorAction SilentlyContinue) {
-            if ($process.HasExited) { continue }
-            if (!$process.Path) { throw '업데이트 helper 경로를 확인할 수 없습니다. / Cannot verify update helper; nothing stopped.' }
-            if ((Split-Path -Parent $process.Path) -eq $directory -and
-                $process.SessionId -eq [Diagnostics.Process]::GetCurrentProcess().SessionId) { $running += $process }
+            $observed=Get-BapProcessObservation $process
+            if ($observed.Exited -eq $true) { continue }
+            if (!$observed.Path) { throw '업데이트 helper 경로를 확인할 수 없습니다. / Cannot verify update helper; nothing stopped.' }
+            if ((Split-Path -Parent $observed.Path) -ne $directory) { continue }
+            if($null -eq $observed.Session -or $null -eq $observed.Exited){throw 'Cannot verify update helper identity; nothing stopped.'}
+            if ($observed.Session -eq [Diagnostics.Process]::GetCurrentProcess().SessionId) { $running += $process }
         }
         if (!$running.Count) { return }
         Write-Host '업데이트 helper가 실행 중입니다. 정상 종료를 기다리세요. / Update helper is running; wait for it to finish.'
@@ -140,7 +156,10 @@ function Stop-BapSteam([string]$SteamRoot, [hashtable]$State) {
         $status = Get-BapSteamStatus $SteamRoot
         if ($status.State -eq 'Stopped') { return }
         if ($status.State -in @('Unknown','OtherSession')) {
-            try { Assert-BapSteamStopped $SteamRoot 'ShutdownObservation' } catch { Write-Warning $_.Exception.Message }
+            try { Assert-BapSteamStopped $SteamRoot 'ShutdownObservation' } catch {
+                Write-Warning $_.Exception.Message
+                if(Get-Command Write-BapSteamWaitDiagnostic -ErrorAction SilentlyContinue){Write-BapSteamWaitDiagnostic $_}
+            }
             try { $choice = Read-Host '직접 종료 후 r로 재확인, Enter로 취소 / r: recheck after normal exit, Enter: cancel' }
             catch { throw (New-BapSteamFailure 'Steam을 정상 종료한 뒤 다시 시도하세요. / Close Steam normally and retry; interactive recheck unavailable.' 'ConsentUnavailable' 'ShutdownConsent' $status) }
             if ($choice -ne 'r') {

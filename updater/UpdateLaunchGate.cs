@@ -5,7 +5,7 @@ namespace BetterAstralParty.Updating
     internal static class UpdateLaunchGate
     {
         internal static void AssertNoReinstall(WindowsFileFence fence) {
-            try { using(var pending=fence.OpenFile("BetterAstralParty.reinstall.pending")) throw new ApplySafetyException(ApplyFailure.RecoveryRequired); }
+            try { using(var pending=fence.OpenFile("BetterAstralParty.reinstall-v3.pending")) throw new ApplySafetyException(ApplyFailure.RecoveryRequired); }
             catch(ApplySafetyException error) when(error.NativeError==2) { }
         }
         internal static void Check(WindowsFileFence fence) {

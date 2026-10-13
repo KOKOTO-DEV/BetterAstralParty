@@ -1,4 +1,5 @@
-﻿param(
+﻿[CmdletBinding()]
+param(
     [string]$GameRoot,
     [switch]$RestartSteam,
     [switch]$UpdateOnly,
@@ -59,6 +60,7 @@ if (-not (Test-Path -LiteralPath $exe)) {
 . (Join-Path $PSScriptRoot 'install-reinstall.ps1')
 $installStage = 'Incoming installation bundle validation'
 $installBundle = Open-BapInstallBundle -PackageRoot $root -GameRoot $GameRoot -RecoveryPlan $RecoveryPlan
+Assert-BapMaintenancePathPlan $installBundle -IncludeLoader
 $diagnosticOwner=Start-BapInstallerDiagnostics $installBundle
 Write-BapInstallerStage $installBundle 'BootstrapGate'
 
@@ -157,6 +159,8 @@ $baseline=if($null -eq $loaderBefore){'null'}elseif($loaderBefore){'true'}else{'
 $preparedReceipt=Invoke-BapWholeBridge $installBundle 'PrepareWholeReceipt' @([string]$installBundle.WholeObservation,[string]$baseline)
 if ($preparedReceipt -isnot [string]) { throw 'Invalid signed channel receipt response.' }
 $targets = @((@($installFiles | ForEach-Object { $_.Target }) + @($bepinexConfig, $receiptPath)) | Sort-Object -Unique)
+$installStage = 'Maintenance path planning'
+Assert-BapMaintenancePathPlan $installBundle $targets
 $installBytes = [long]0
 foreach ($file in $installFiles) {
     if (!(Test-Path -LiteralPath $file.Source -PathType Leaf)) { throw "Package file missing: $($file.Source)" }

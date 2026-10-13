@@ -156,7 +156,7 @@ internal static class RuntimeFixture
             Reject(() => SteamLauncher.EnableSharedLoader(foreign, operation), "wrong root owned lease denied");
             Same(bytes, File.ReadAllBytes(Path.Combine(foreign, Ini)), "wrong root unchanged");
             Assert(Backups(foreign).Length == 0, "wrong root no backup");
-            File.WriteAllText(Path.Combine(own, "BetterAstralParty.reinstall.pending"), "isolated pending");
+            File.WriteAllText(Path.Combine(own, "BetterAstralParty.reinstall-v3.pending"), "isolated pending");
             Reject(() => SteamLauncher.EnableSharedLoader(own, operation), "pending work introduced after acquisition denied");
             Same(bytes, File.ReadAllBytes(Path.Combine(own, Ini)), "pending work unchanged");
             Assert(Backups(own).Length == 0, "pending work no backup");

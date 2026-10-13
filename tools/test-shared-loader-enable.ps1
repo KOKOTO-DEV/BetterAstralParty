@@ -22,20 +22,19 @@ $project = Join-Path $projectRoot 'focus-tests/shared-loader-enable/SharedLoader
 $obj = (Join-Path $stageRoot 'obj/').Replace('\', '/')
 $bin = Join-Path $stageRoot 'bin'
 $launcher = Get-Content -LiteralPath (Join-Path $projectRoot 'tools/SteamLauncher.cs') -Raw
-$methods = @(foreach ($name in @('GuardModLaunch', 'GuardModLaunchVerified', 'GuardMaintenance', 'EnableSharedLoader')) {
+$methods = @(foreach ($name in @('GuardMaintenance', 'EnableSharedLoader')) {
     $pattern = if ($name -eq 'GuardMaintenance') { '(?m)^    public static IDisposable GuardMaintenance\([^\r\n]+\r?$' } else { '(?ms)^    public static (?:IDisposable|void) ' + $name + '\([^\r\n]+\r?\n.*?^    \}' }
     $match = [regex]::Match($launcher, $pattern)
     if (-not $match.Success) { throw "Exact launcher bridge extraction failed: $name" }
     $match.Value
 })
-$verified = $methods[1]
-if ($methods[0] -notmatch 'return GuardModLaunchVerified\(root,null\);' -or
-    $verified -notmatch '(?s)return new BetterAstralParty\.Updating\.UpdateLaunchGate\.Lease\(root, fence => \{.*launcher\.Hash\(\)!=snapshotHash.*AutomaticHelperUpgrade\.Ensure\(fence,assembly\);.*\}\);') {
-    throw 'Mod launch must verify the captured launcher and run helper upgrade under the retained beforeCheck lease.'
+$verified = [regex]::Match($launcher, '(?ms)^    public static IDisposable GuardModLaunchVerified\([^\r\n]+\r?\n.*?^    \}').Value
+if ($verified -notmatch '(?s)return new BetterAstralParty\.Updating\.UpdateLaunchGate\.Lease\(root, fence => \{.*launcher\.Hash\(\)!=snapshotHash.*InstallReceipt\.Parse.*installed\.Channels\.Root!=fence\.RootIdentity\.Text.*file\.Hash\(\)!=installed\.Files\[path\].*metadata\.UpdateProtocol!=3.*HelperDelivery\.Fingerprint\(fence,BetterAstralParty\.Updating\.UpdateTrust\.Production\(\),3\).*\}\);' -or $verified -match 'AutomaticHelperUpgrade\.Ensure|GetManifestResource') {
+    throw 'Mod launch must require an intact baseline receipt, owned8 and protocol3 helper under its retained lease; no embedded migration.'
 }
 $gate = Get-Content -LiteralPath (Join-Path $projectRoot 'updater/UpdateLaunchGate.cs') -Raw
 if ($gate -notmatch '(?s)_lock=_fence\.OpenFile\("BetterAstralParty.update.lock",true\).*beforeCheck\?\.Invoke\(_fence\);\s*Check\(_fence\);') {
-    throw 'Helper upgrade must run after acquiring the operation lock and before pending-state checking.'
+    throw 'Installed validation must run after acquiring the operation lock and before pending-state checking.'
 }
 $bridge = Join-Path $stageRoot 'LauncherBridge.cs'
 $null = [IO.Directory]::CreateDirectory($stageRoot)
@@ -43,34 +42,24 @@ $null = [IO.Directory]::CreateDirectory($stageRoot)
 $tokens = $null; $parseErrors = $null
 $launchAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $projectRoot 'tools/BetterAstralParty-Steam.ps1'), [ref]$tokens, [ref]$parseErrors)
 if ($parseErrors.Count) { throw 'Launch script syntax invalid.' }
-function Get-OneNode($type, $pattern) {
-    $nodes = @($launchAst.FindAll({ param($node) $node -is $type -and $node.Extent.Text -match $pattern }, $true))
-    if ($nodes.Count -ne 1) { throw "Launch ordering node must be unique: $pattern" }
-    $nodes[0]
+$entry = $launchAst.Extent.Text
+if ($entry -match 'ReadAllBytes|Assembly\]::Load|Start-Process|BAP_UPDATER_LAUNCHER_PID' -or $entry -notmatch 'PowerShell launch routing is unsupported' -or $entry -notmatch 'exit 1') {
+    throw 'Legacy PowerShell routing must refuse rather than loading or forwarding an old executable.'
 }
-$acquire = Get-OneNode ([Management.Automation.Language.AssignmentStatementAst]) '^\$updateLaunchLease = \$guardMethod\.Invoke'
-$capture = Get-OneNode ([Management.Automation.Language.AssignmentStatementAst]) '^\$launchBytes = \[IO.File\]::ReadAllBytes'
-$hash = Get-OneNode ([Management.Automation.Language.AssignmentStatementAst]) '^\$launchHash = \[BitConverter\]::ToString\(\$snapshotHasher\.ComputeHash\(\$launchBytes\)\)\.Replace'
-$load = Get-OneNode ([Management.Automation.Language.AssignmentStatementAst]) '^\$launchAssembly = \[Reflection.Assembly\]::Load\(\$launchBytes\)$'
-$method = Get-OneNode ([Management.Automation.Language.AssignmentStatementAst]) '^\$guardMethod = .*GetMethod\(''GuardModLaunchVerified'''
-if ($acquire.Extent.Text -ne '$updateLaunchLease = $guardMethod.Invoke($null, @($PSScriptRoot,$launchHash))' -or
-    -not ($capture.Extent.EndOffset -lt $hash.Extent.StartOffset -and $hash.Extent.EndOffset -lt $load.Extent.StartOffset -and
-        $load.Extent.EndOffset -lt $method.Extent.StartOffset -and $method.Extent.EndOffset -lt $acquire.Extent.StartOffset)) {
-    throw 'Mod launch must pass the SHA256 of the exact loaded byte snapshot to the verified guard.'
+$run = [regex]::Match($launcher, '(?ms)^    internal static int Run\(.*?^    \}').Value
+$previousOffset = -1
+foreach ($step in @('using (var guardedLaunch = GuardModLaunchVerified(root, null))',
+    'Process.Start(checkStart)', 'if (check.ExitCode != 0)', 'return check.ExitCode;',
+    'EnableSharedLoader(root, guardedLaunch);', 'Process.Start(start)', 'game.WaitForExit();', 'return game.ExitCode;')) {
+    $offset = $run.IndexOf($step, [StringComparison]::Ordinal)
+    if ($offset -le $previousOffset) { throw "Native launch ordering changed: $step" }
+    $previousOffset = $offset
 }
-$checkGate = Get-OneNode ([Management.Automation.Language.IfStatementAst]) '^if \(\$check\.ExitCode -ne 0\)'
-$arguments = Get-OneNode ([Management.Automation.Language.AssignmentStatementAst]) '^\$enableArguments = \[object\[\]\]@\(\$PSScriptRoot, \$updateLaunchLease\)$'
-$enable = Get-OneNode ([Management.Automation.Language.AssignmentStatementAst]) '^\$null = \$enableLoader\.Invoke\(\$null, \$enableArguments\)$'
-$start = Get-OneNode ([Management.Automation.Language.AssignmentStatementAst]) '^\$game = Start-Process '
-$dispose = Get-OneNode ([Management.Automation.Language.InvokeMemberExpressionAst]) '^\$updateLaunchLease\.Dispose\(\)$'
-if ($checkGate.FindAll({ param($node) $node -is [Management.Automation.Language.ThrowStatementAst] }, $true).Count -ne 1 -or
-    -not ($acquire.Extent.StartOffset -lt $checkGate.Extent.StartOffset -and $checkGate.Extent.EndOffset -lt $arguments.Extent.StartOffset -and
-        $arguments.Extent.EndOffset -lt $enable.Extent.StartOffset -and $enable.Extent.EndOffset -lt $start.Extent.StartOffset -and $start.Extent.EndOffset -lt $dispose.Extent.StartOffset)) {
-    throw 'Launch must acquire lease, pass compatibility, enable with same lease, launch, and finally dispose in order.'
+if ($run -match 'BetterAstralParty-Steam\.ps1|Assembly\.Load' -or
+    $run -notmatch 'catch \(Exception error\) \{ details = LaunchFailure\(phase, error\); return 1; \}') {
+    throw 'Native host must retain its lease through game exit and report failures without executable reloading.'
 }
-$outerTry = Get-OneNode ([Management.Automation.Language.TryStatementAst]) '(?s)^try \{.*\$updateLaunchLease\.Dispose\(\)'
-if (-not $outerTry.Finally -or $dispose.Extent.StartOffset -lt $outerTry.Finally.Extent.StartOffset -or $dispose.Extent.EndOffset -gt $outerTry.Finally.Extent.EndOffset) { throw 'Launch lease disposal must be in outer finally.' }
-Write-Host 'PASS actual launch wiring: exact snapshot hash, locked helper migration before pending check, compatibility before enable, same retained lease, enable before game launch, finally disposal.'
+Write-Host 'PASS launch wiring: native baseline receipt/owned8/helper validation before pending check, compatibility before enable, retained lease through game exit, legacy script rejected.'
 $common = @("-p:BaseIntermediateOutputPath=$obj", "-p:MSBuildProjectExtensionsPath=$obj", "-p:LauncherBridgeSource=$bridge", '-p:UseSharedCompilation=false', '-p:NuGetAudit=false')
 & $dotnet restore $project --configfile (Join-Path $projectRoot 'NuGet.Config') @common
 if ($LASTEXITCODE -ne 0) { throw 'Shared-loader enable fixture restore failed.' }

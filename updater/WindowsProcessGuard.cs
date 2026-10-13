@@ -67,25 +67,37 @@ namespace BetterAstralParty.Updating
             }
             public void Dispose() { _handle.Dispose(); }
         }
-        internal static Captured Capture(uint pid, string expectedImage, long? expectedCreation = null, uint? expectedSession = null)
+        internal static Captured Observe(uint pid, bool allowExited = false)
         {
             var handle = OpenProcess(0x00100000 | 0x1000, false, pid); // SYNCHRONIZE | QUERY_LIMITED_INFORMATION
             if (handle.IsInvalid)
             { var error = Marshal.GetLastWin32Error(); handle.Dispose(); throw new ApplySafetyException(ApplyFailure.ProcessUncertain, error); }
             try
             {
+                if (allowExited && WaitForSingleObject(handle, 0) == 0) return new Captured(handle, pid, 0, 0, "");
                 long creation, exit, kernel, user; uint session;
                 if (!GetProcessTimes(handle, out creation, out exit, out kernel, out user) || !ProcessIdToSessionId(pid, out session))
                     throw new ApplySafetyException(ApplyFailure.ProcessUncertain, Marshal.GetLastWin32Error());
                 var name = new StringBuilder(512); var size = (uint)name.Capacity;
                 if (!QueryFullProcessImageNameW(handle, 0, name, ref size)) throw new ApplySafetyException(ApplyFailure.ProcessUncertain, Marshal.GetLastWin32Error());
                 var image = Path.GetFullPath(name.ToString());
-                if (!string.Equals(image, Path.GetFullPath(expectedImage), StringComparison.OrdinalIgnoreCase)
-                    || expectedCreation.HasValue && creation != expectedCreation.Value || expectedSession.HasValue && session != expectedSession.Value)
-                    throw new ApplySafetyException(ApplyFailure.ProcessUncertain);
                 return new Captured(handle, pid, session, creation, image);
             }
-            catch { handle.Dispose(); throw; }
+            catch {
+                // Only the held process object can prove an exit during metadata reads.
+                if (allowExited && WaitForSingleObject(handle, 0) == 0) return new Captured(handle, pid, 0, 0, "");
+                handle.Dispose(); throw;
+            }
+        }
+        internal static Captured Capture(uint pid, string expectedImage, long? expectedCreation = null, uint? expectedSession = null)
+        {
+            var captured = Observe(pid);
+            try {
+                if (!string.Equals(captured.Image, Path.GetFullPath(expectedImage), StringComparison.OrdinalIgnoreCase)
+                    || expectedCreation.HasValue && captured.Creation != expectedCreation.Value || expectedSession.HasValue && captured.Session != expectedSession.Value)
+                    throw new ApplySafetyException(ApplyFailure.ProcessUncertain);
+                return captured;
+            } catch { captured.Dispose(); throw; }
         }
         internal static void AssertNoRunning(IEnumerable<string> exactImages)
         {

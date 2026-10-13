@@ -11,9 +11,9 @@ public sealed class Plugin : BasePlugin
 {
     public const string Guid = "kr.betterastralparty.mod";
     public const string Name = "BetterAstralParty";
-    public const string Version = "1.1.4";
+    public const string Version = "1.2.1";
     public const int InstallBundleProtocol = 1;
-    public const string UpdateProtocol = "2";
+    public const string UpdateProtocol = "3";
     public const string SettingsSchema = "1";
 
     internal static ConfigEntry<bool> Enabled { get; private set; } = null!;
@@ -116,7 +116,7 @@ public sealed class Plugin : BasePlugin
         Language = Config.Bind("일반", "언어", "Auto", "Mod language: Auto, 한국어, English. Auto follows the native menu text.");
         ModText.Select(Language.Value);
         UpdateChannel = Config.Bind("일반", "업데이트 채널", "Stable",
-            "Stable: 안정판, Beta: 베타 포함. 비공개 릴리스는 업데이트 인증이 필요합니다. 자동 다운로드·종료 후 적용 설정에 따라 검증된 업데이트를 내려받고 게임과 모드 런처 종료 후 모드 소유 파일을 교체합니다. / Stable or Beta. Private releases require Connect Updates. Auto Download and Apply After Exit control verified downloads and replacement of mod-owned files after the game and mod launcher exit.");
+            "Stable: 안정판 저장소, Beta: 베타 저장소. 비공개 릴리스는 업데이트 인증이 필요합니다. 다른 채널의 최신판으로 전환할 때는 안내에서 직접 승인해야 합니다. 자동 다운로드·종료 후 적용 설정에 따라 검증된 업데이트를 내려받고 게임과 모드 런처 종료 후 모드 소유 파일을 교체합니다. / Stable or Beta repository. Private releases require Connect Updates. Switching to the other channel's latest release requires confirmation. Auto Download and Apply After Exit control verified downloads and replacement of mod-owned files after the game and mod launcher exit.");
         AutoDownload = Config.Bind("업데이트", "자동 다운로드", true, "기본 ON. 확인된 저장소·서명·도우미 계약이 필요하며 Beta는 업데이트 인증도 필요합니다. / Default ON. Requires verified repository, signing trust and helper contract. Beta also requires update authentication.");
         ApplyAfterExit = Config.Bind("업데이트", "종료 후 적용", true, "기본 ON. 검증한 업데이트를 게임과 런처가 종료된 뒤 적용합니다. / Default ON. Apply a verified update after the game and launcher exit.");
         DiagnosticHub.Stage(DiagnosticFeature.Loader, DiagnosticPhase.Configuration, DiagnosticOutcome.Completed);

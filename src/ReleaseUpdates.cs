@@ -40,7 +40,7 @@ internal sealed record ReleaseUpdate(string Version, string Title, string Notes,
         if (ReleaseId <= 0 || ZipAssetId <= 0 || DescriptorAssetId <= 0 || SignatureAssetId <= 0) return null;
         if (channel == ReleaseChannel.Stable && Beta) return null;
         if (TransitionCandidate && transition == null) return null;
-        // Beta selection includes stable releases; verification follows the selected release's channel.
+        // A production feed fixes both repository and channel; repositories are never merged here.
         var repository = Repository.Length == 0 ? "TSM701/BetterAstralParty" : Repository;
         var actualChannel = FeedChannel.Length == 0 ? Beta ? "Beta" : "Stable" : FeedChannel;
         if (FeedChannel.Length != 0 && actualChannel != channel.ToString()) return null;
@@ -87,6 +87,7 @@ internal sealed class ReleaseUpdates : IDisposable
     private bool _disposed;
     private bool _menuWasAvailable, _autoDue = true;
     private bool _transitionScan;
+    private string? _installedChannel;
     private bool _channelRefresh;
     private readonly HashSet<string> _notifiedVersions = new(StringComparer.Ordinal);
     internal ReleaseChannel Channel { get; private set; }
@@ -96,6 +97,18 @@ internal sealed class ReleaseUpdates : IDisposable
     internal int Generation => _generation;
     internal string FeedIdentity => _feed?.Identity ?? _repository;
     internal ReleaseFeed? Feed => _feed;
+    internal void InstalledChannel(string? channel)
+    {
+        channel = channel is "Stable" or "Beta" ? channel : null;
+        if (_disposed || _installedChannel == channel) return;
+        _installedChannel = channel; Clear(); _channelCache.Clear(); _channelRefresh = true;
+        Set(ReadyState());
+    }
+    internal bool CurrentRelease(ReleaseUpdate release) => !_disposed && Result.Status == ReleaseUpdateStatus.Available
+        && Result.Release is { } current && current.Generation == _generation && release.Generation == _generation
+        && release.FeedChannel == Channel.ToString() && release.Repository == current.Repository && release.RepositoryId == current.RepositoryId
+        && release.FeedChannel == current.FeedChannel && release.Version == current.Version && release.ReleaseId == current.ReleaseId
+        && release.ZipAssetId == current.ZipAssetId && release.DescriptorAssetId == current.DescriptorAssetId && release.SignatureAssetId == current.SignatureAssetId;
 
     internal ReleaseUpdates(string current, string repository, HttpClient? client = null,
         IReleaseAuthentication? authentication = null, TimeSpan? timeout = null)
@@ -253,7 +266,8 @@ internal sealed class ReleaseUpdates : IDisposable
         var token = cancellation.Token;
         var pages = new Dictionary<string, Page>(_pages, StringComparer.Ordinal);
         var client = _client!; var authentication = _feed is { RequiresAuthentication: false } ? null : _authentication;
-        var feed = _feed; var repository = _repository; var endpoint = _endpoint; var generation = _generation; var transitionScan = _transitionScan;
+        var feed = _feed; var repository = _repository; var endpoint = _endpoint; var generation = _generation;
+        var transitionScan = _transitionScan || feed != null && _installedChannel != null && _installedChannel != feed.Channel;
         var channel = Channel; var identity = _identity;
         _channelCache.Remove(Channel); // An interrupted newer scan must not resurrect an older success as current.
         _lastStarted[Channel] = now; _autoDue = false; _transitionScan = _channelRefresh = false;
@@ -436,7 +450,8 @@ internal sealed class ReleaseUpdates : IDisposable
         if (retry == null && response.Headers.TryGetValues("X-RateLimit-Reset", out var reset)
             && long.TryParse(reset.FirstOrDefault(), out var unix) && unix is >= 0 and <= 253402300799)
             retry = DateTimeOffset.FromUnixTimeSeconds(unix);
-        return retry is { } time && time > now ? time : now.AddSeconds(60);
+        var next = retry is { } time && time > now ? time : now.AddSeconds(60);
+        return next > now.AddDays(1) ? now.AddDays(1) : next;
     }
 
     internal static bool TryVersion(string tag, out SemVersion version)

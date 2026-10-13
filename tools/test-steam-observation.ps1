@@ -111,6 +111,69 @@ try {
     $rows = 1..80 | ForEach-Object { [pscustomobject]@{pid=$_;sessionMatch=$true;pathAvailable=$true;pathMatch=$false;startAvailable=$false;startedUtc=$null} }
     $bounded=(New-BapSteamFailure 'inert' 'SteamRunning' 'InstallPreflight' ([pscustomobject]@{Facts=$rows})).Data['BapSteamDiagnostic'] | ConvertFrom-Json
     Check 'context quota reports every omitted row' ($bounded.processes.Count -eq 48 -and $bounded.observedCount -eq 80 -and $bounded.omittedCount -eq 32)
+    $script:BapSteamProcessObserver=$null
+    $nullSession=Process 41 $selected.Path;$nullSession.SessionId=$null;$probe.Processes=@($nullSession)
+    Check 'null session is unavailable, not another session' ((Get-BapSteamStatus $scratch).State -eq 'Unknown')
+    $once=Process 42 $selected.Path;$probe.PathReads=0;$probe.SelectedPath=$selected.Path
+    $once|Add-Member ScriptProperty Path {$probe.PathReads++;if($probe.PathReads -ne 1){throw 'Path read twice'};return $probe.SelectedPath} -Force
+    $probe.Processes=@($once)
+    Check 'managed path is captured exactly once' ((Get-BapSteamStatus $scratch).State -eq 'Running' -and $probe.PathReads -eq 1)
+    Add-Type -TypeDefinition @'
+using System;
+public sealed class BapSteamObservationFixtureError : Exception { public readonly int NativeError; public BapSteamObservationFixtureError(int code) { NativeError=code; } }
+public static class BapSteamObservationFixture {
+    public static object[] Result; public static int Calls, ExpectedPid, Error;
+    public static object[] Read(int pid) { Calls++; if(pid!=ExpectedPid)throw new Exception("Unexpected PID");if(Error!=0)throw new BapSteamObservationFixtureError(Error);return Result; }
+}
+'@
+    $script:BapSteamProcessObserver=[BapSteamObservationFixture].GetMethod('Read')
+    $fallback=Process 43 $selected.Path;$fallback.Path=$null;$fallback.SessionId=$null;$fallback.StartTime=$null
+    $probe.Processes=@($fallback);[BapSteamObservationFixture]::ExpectedPid=43
+    [BapSteamObservationFixture]::Result=[object[]]@($false,$selected.Path,[long]$selected.StartTime.ToFileTime(),[uint32]$session)
+    $native=Get-BapSteamStatus $scratch
+    Check 'native snapshot resolves unavailable path session and creation' ($native.State -eq 'Running' -and $native.Facts[0].querySource -eq 'Native' -and $native.Facts[0].nativeError -eq 0)
+    $target=[pscustomobject]@{Id=43;Path=$selected.Path;Started=$selected.StartTime;Session=$session}
+    $killedBefore=$probe.Killed.Count
+    Stop-BapVerifiedProcess $target
+    Check 'final identity check shares native fallback before inert stop' ($probe.Killed.Count -eq $killedBefore+1 -and $probe.Killed[-1] -eq 43)
+    $probe.Processes=@($fallback)
+    [BapSteamObservationFixture]::Result=[object[]]@($false,$foreign.Path,[long]$selected.StartTime.ToFileTime(),[uint32]($session+1))
+    Check 'native foreign root is excluded despite managed metadata missing' ((Get-BapSteamStatus $scratch).State -eq 'Stopped')
+    [BapSteamObservationFixture]::Result=[object[]]@($false,$selected.Path,[long]$selected.StartTime.ToFileTime(),[uint32]($session+1))
+    Check 'native same root different session remains protected' ((Get-BapSteamStatus $scratch).State -eq 'OtherSession')
+    [BapSteamObservationFixture]::Error=5
+    $unavailable=Get-BapSteamStatus $scratch
+    Check 'native access failure preserves unknown and diagnostic cause' ($unavailable.State -eq 'Unknown' -and $unavailable.Facts[0].nativeError -eq 5 -and $unavailable.Facts[0].querySource -eq 'Unavailable')
+    [BapSteamObservationFixture]::Error=0
+    [BapSteamObservationFixture]::Result=[object[]]@($true,'',[long]0,[uint32]0)
+    Check 'native confirmed exit is not a live unknown candidate' ((Get-BapSteamStatus $scratch).State -eq 'Stopped')
+    [BapSteamObservationFixture]::Result=[object[]]@($false,$selected.Path,[long]$selected.StartTime.ToFileTime(),[uint32]$session)
+    [BapSteamObservationFixture]::Error=87
+    $notConfirmed=Get-BapSteamStatus $scratch
+    Check 'native invalid PID alone is not proof of exit' ($notConfirmed.State -eq 'Unknown' -and $notConfirmed.Facts[0].nativeError -eq 87 -and !$notConfirmed.Facts[0].confirmedExit)
+    [BapSteamObservationFixture]::Error=0
+    $script:BapSteamProcessObserver=$null
+    foreach($childName in @('steamwebhelper','steamerrorreporter','steamerrorreporter64')){
+        $child=Process 51 (Join-Path $scratch ($childName+'.exe'));$child.ProcessName=$childName
+        $closedClient=Process 52 $selected.Path;$closedClient.HasExited=$true;$closedClient.Path=$null
+        $probe.Processes=@($closedClient,$child)
+        $remaining=Get-BapSteamStatus $scratch
+        Check ('surviving '+$childName+' still protects selected Steam after client exit') ($remaining.State -eq 'Running' -and $remaining.Targets.Count -eq 1 -and $remaining.Targets[0].Id -eq 51)
+        $killedBefore=$probe.Killed.Count;$probe.Answers=@('r');$probe.Restart=$false;$probe.ExitAfterPoll=0
+        $state=@{Restart=$false};Stop-BapSteam $scratch $state
+        Check ('normal exit and recheck of '+$childName+' needs no force or restart') ((Get-BapSteamStatus $scratch).State -eq 'Stopped' -and $probe.Killed.Count -eq $killedBefore -and !$state.Restart)
+        $child.Path=$null;$child.SessionId=$null;$probe.Processes=@($child);$probe.Answers=@('r')
+        Check ('unavailable live '+$childName+' is pending rather than stopped') ((Get-BapSteamStatus $scratch).State -eq 'Unknown')
+        Stop-BapSteam $scratch @{Restart=$false}
+        Check ('unavailable '+$childName+' resolves only on fresh stopped recheck') ((Get-BapSteamStatus $scratch).State -eq 'Stopped' -and $probe.Killed.Count -eq $killedBefore)
+    }
+    $webChild=Process 53 (Join-Path $scratch 'steamwebhelper.exe');$webChild.ProcessName='steamwebhelper'
+    $reportChild=Process 54 (Join-Path $scratch 'steamerrorreporter.exe');$reportChild.ProcessName='steamerrorreporter'
+    $foreignService=Process 55 '' 0;$foreignService.Path=$null;$foreignService.ProcessName='SteamService'
+    $probe.Processes=@($webChild,$reportChild,$foreignService);$probe.Answers=@('y')
+    $state=@{Restart=$false};$beforeChildren=$probe.Killed.Count
+    Stop-BapSteam $scratch $state
+    Check 'inert child-only consent never creates a false client restart' (!$state.Restart -and $probe.Killed.Count -eq $beforeChildren+2 -and 55 -notin $probe.Killed)
     $files=@('steam-session.ps1','steam-shortcut.ps1','install.ps1','uninstall.ps1','test-steam-observation.ps1')
     $inputs=@($files | ForEach-Object { $path=Join-Path $PSScriptRoot $_; [pscustomobject]@{file=$_;sha256=(Get-FileHash -LiteralPath $path).Hash} })
     $result=[ordered]@{runtime=$PSVersionTable.PSVersion.ToString();passed=$checks.Count;failed=0;cases=@($checks);inputs=$inputs;realSteamOrGameTouched=$false}

@@ -27,11 +27,11 @@ namespace BetterAstralParty.Updating {
         internal readonly string Version, Sha256, DescriptorHash, KeyId; internal readonly long Size;
         internal readonly int Protocol;
         private HelperDescriptor(string version,long size,string hash,string descriptor,string key,int protocol) {Version=version;Size=size;Sha256=hash;DescriptorHash=descriptor;KeyId=key;Protocol=protocol;}
-        internal static byte[] Prepare(string version,byte[] image,int protocol=1) {
-            if(protocol!=1 && protocol!=2) throw new UpdateValidationException(UpdateFailure.InvalidDescriptor);
+        internal static byte[] Prepare(string version,byte[] image,int protocol=3) {
+            if(protocol!=3) throw new UpdateValidationException(UpdateFailure.InvalidDescriptor);
             var parsed=UpdateVersion.Parse(version); if(parsed.Tag!=version || image.Length==0 || image.Length>UpdateTrust.MaxFileBytes) throw new UpdateValidationException(UpdateFailure.InvalidDescriptor);
             Executable(image);
-            return Encoding.ASCII.GetBytes("BetterAstralParty.HelperDelivery/v"+protocol+"\nrepository=TSM701/BetterAstralParty\nversion="+version+"\nplatform="+UpdateTrust.PlatformId+"\nimage="+Image+"\nbytes="+image.Length.ToString(CultureInfo.InvariantCulture)+"\nsha256="+UpdateTrust.Hash(image)+"\n"+(protocol==2?"update-protocol=2\n":""));
+            return Encoding.ASCII.GetBytes("BetterAstralParty.HelperDelivery/v"+protocol+"\nrepository=TSM701/BetterAstralParty\nversion="+version+"\nplatform="+UpdateTrust.PlatformId+"\nimage="+Image+"\nbytes="+image.Length.ToString(CultureInfo.InvariantCulture)+"\nsha256="+UpdateTrust.Hash(image)+"\n"+(protocol==3?"update-protocol=3\n":""));
         }
         internal static void Executable(byte[] image) {
             if(image.Length<512 || image[0]!=77 || image[1]!=90) throw new UpdateValidationException(UpdateFailure.InvalidPackage);
@@ -41,7 +41,7 @@ namespace BetterAstralParty.Updating {
         internal static HelperDescriptor Verify(UpdateTrust trust,byte[] descriptor,DetachedSignature envelope,byte[] image,string? expectedVersion=null) {
             var bytes=trust.VerifyDetached(descriptor,envelope.KeyId,envelope.Signature);
             var lines=Encoding.ASCII.GetString(bytes).Split('\n');
-            var protocol=lines.Length==8 && lines[0]=="BetterAstralParty.HelperDelivery/v1" && lines[7]==""?1:lines.Length==9 && lines[0]=="BetterAstralParty.HelperDelivery/v2" && lines[7]=="update-protocol=2" && lines[8]==""?2:0;
+            var protocol=lines.Length==9 && lines[0]=="BetterAstralParty.HelperDelivery/v3" && lines[7]=="update-protocol=3" && lines[8]==""?3:0;
             if(protocol==0 || lines[1]!="repository=TSM701/BetterAstralParty" || !lines[2].StartsWith("version=",StringComparison.Ordinal) || lines[3]!="platform="+UpdateTrust.PlatformId || lines[4]!="image="+Image || !lines[5].StartsWith("bytes=",StringComparison.Ordinal) || !lines[6].StartsWith("sha256=",StringComparison.Ordinal)) throw new UpdateValidationException(UpdateFailure.InvalidDescriptor);
             var version=lines[2].Substring(8); long size;
             if(UpdateVersion.Parse(version).Tag!=version || expectedVersion!=null && version!=expectedVersion || !long.TryParse(lines[5].Substring(6),NumberStyles.None,CultureInfo.InvariantCulture,out size) || size<=0 || size>UpdateTrust.MaxFileBytes || size!=image.Length || lines[6].Substring(7)!=UpdateTrust.Hash(image)) throw new UpdateValidationException(UpdateFailure.WrongTarget);
@@ -68,7 +68,7 @@ namespace BetterAstralParty.Updating {
         }
         internal static void Write(WindowsFileFence fence,string path,byte[] bytes) {
             // Publish only flushed whole files; retain interrupted temporary evidence, never overwrite.
-            if(!Regex.IsMatch(path,@"\Abap-helper(?:auto)?-[0-9a-f]{32}/[a-z-]+\z"))throw Bad();
+            if(!Regex.IsMatch(path,@"\Abap-v3-helper(?:auto)?-[0-9a-f]{32}/[a-z-]+\z"))throw Bad();
             var pending=path+"-pending-"+Guid.NewGuid().ToString("N");
             using(var file=fence.OpenFile(pending,true,true)){file.Stream.Write(bytes,0,bytes.Length);file.Flush();file.RenameTo(fence,path);file.Flush();}
         }
@@ -83,14 +83,14 @@ namespace BetterAstralParty.Updating {
                 return true;
             } } catch(ApplySafetyException error) when(error.NativeError==2 || error.Failure==ApplyFailure.InvalidState) {return false;}
         }
-        internal static string? Fingerprint(WindowsFileFence fence,UpdateTrust trust,int minimumProtocol=1) {
+        internal static string? Fingerprint(WindowsFileFence fence,UpdateTrust trust,int minimumProtocol=3) {
             if(PendingInstall(fence)) throw Bad();
             return FingerprintAt(fence,trust,HelperDescriptor.Image,Receipt,minimumProtocol);
         }
         internal static string? ArchivedFingerprint(WindowsFileFence fence,UpdateTrust trust,string imagePath,string receiptPath) {
             foreach(var path in new[]{imagePath,receiptPath})
-                if(path!=HelperDescriptor.Image && path!=Receipt && !Regex.IsMatch(path,@"\Abap-helper(?:bridge|auto)-[0-9a-f]{32}/old-(?:image|receipt)\z"))throw Bad();
-            return FingerprintAt(fence,trust,imagePath,receiptPath,1);
+                if(path!=HelperDescriptor.Image && path!=Receipt && !Regex.IsMatch(path,@"\Abap-v3-helper(?:bridge|auto)-[0-9a-f]{32}/old-(?:image|receipt)\z"))throw Bad();
+            return FingerprintAt(fence,trust,imagePath,receiptPath,3);
         }
         private static string? FingerprintAt(WindowsFileFence fence,UpdateTrust trust,string imagePath,string receiptPath,int minimumProtocol) {
             var descriptor=AuthenticatedAt(fence,trust,imagePath,receiptPath);
@@ -100,10 +100,11 @@ namespace BetterAstralParty.Updating {
             if(!trust.Configured) return null;
             using(var image=MaybeLaunch(fence,imagePath)) using(var receipt=Maybe(fence,receiptPath)) {
                 if(image==null || receipt==null) return null;
-                var actual=UpdateTicket.Read(receipt,1024);var dirs=Directory.GetDirectories(fence.Root,"bap-helper-*",SearchOption.TopDirectoryOnly);
-                if(dirs.Length>64) throw Bad();
+                // Exact live object IDs + signed descriptor/receipt still select the
+                // provenance; completed historical journal count is not a trust limit.
+                var actual=UpdateTicket.Read(receipt,1024);var dirs=Directory.EnumerateDirectories(fence.Root,"bap-v3-helper-*",SearchOption.TopDirectoryOnly);
                 foreach(var dir in dirs) {
-                    var work=System.IO.Path.GetFileName(dir);if(!Regex.IsMatch(work,@"\Abap-helper-[0-9a-f]{32}\z")) throw Bad();
+                    var work=System.IO.Path.GetFileName(dir);if(!Regex.IsMatch(work,@"\Abap-v3-helper-[0-9a-f]{32}\z")) throw Bad();
                     fence.AssertPrivateDirectory(work);
                     try {
                         byte[] plan,descriptor,signature;
@@ -130,11 +131,10 @@ namespace BetterAstralParty.Updating {
             foreach(var value in receipt) if(value>127 || value==13) throw Bad();
             var actual=Encoding.ASCII.GetString(receipt).Split('\n');
             if(actual.Length!=8 || actual[0]!="BetterAstralParty.HelperReceipt/v1" || actual[1]!="root="+fence.RootIdentity.Text || !Regex.IsMatch(actual[2],@"\Aimage-id=[0-9A-F]{8}:[0-9A-F]{16}\z") || actual[7]!="") throw Bad();
-            var dirs=Directory.GetDirectories(fence.Root,"bap-helper-*",SearchOption.TopDirectoryOnly);
-            if(dirs.Length>64) throw Bad();
+            var dirs=Directory.EnumerateDirectories(fence.Root,"bap-v3-helper-*",SearchOption.TopDirectoryOnly);
             string? evidence=null;
             foreach(var dir in dirs) {
-                var work=Path.GetFileName(dir);if(!Regex.IsMatch(work,@"\Abap-helper-[0-9a-f]{32}\z")) throw Bad();
+                var work=Path.GetFileName(dir);if(!Regex.IsMatch(work,@"\Abap-v3-helper-[0-9a-f]{32}\z")) throw Bad();
                 fence.AssertPrivateDirectory(work);
                 using(var plan=Maybe(fence,work+"/plan")) {
                     if(plan==null) continue;
@@ -143,7 +143,7 @@ namespace BetterAstralParty.Updating {
                     using(var descriptor=fence.OpenFile(work+"/descriptor")) using(var signature=fence.OpenFile(work+"/signature")) using(var committed=fence.OpenFile(work+"/committed")) {
                         if(Encoding.ASCII.GetString(UpdateTicket.Read(committed,128))!=UpdateTrust.Hash(bytes)+"\n") throw Bad();
                         var verified=HelperDescriptor.Verify(trust,UpdateTicket.Read(descriptor,UpdateTrust.MaxDescriptorBytes),DetachedSignature.Parse(UpdateTicket.Read(signature,1024)),image);
-                        if(verified.Protocol<2 || lines[4]!="descriptor="+verified.DescriptorHash || UpdateTrust.Hash(receipt)!=UpdateTrust.Hash(ReceiptBytes(fence,verified,actual[2].Substring(9))) || evidence!=null) throw Bad();
+                        if(verified.Protocol<3 || lines[4]!="descriptor="+verified.DescriptorHash || UpdateTrust.Hash(receipt)!=UpdateTrust.Hash(ReceiptBytes(fence,verified,actual[2].Substring(9))) || evidence!=null) throw Bad();
                         evidence="BetterAstralParty.RemovedHelperEvidence/v1\n"+work+"/plan="+plan.Hash()+"\n"+work+"/descriptor="+descriptor.Hash()+"\n"+work+"/signature="+signature.Hash()+"\n"+work+"/committed="+committed.Hash()+"\n";
                     }
                 }
@@ -151,15 +151,23 @@ namespace BetterAstralParty.Updating {
             return evidence??throw Bad();
         }
         internal static bool PendingInstall(WindowsFileFence fence) {
-            var dirs=Directory.GetDirectories(fence.Root,"bap-helper-*",SearchOption.TopDirectoryOnly);if(dirs.Length>64) throw Bad();
+            var active=0;var pending=false;
+            var dirs=Directory.EnumerateDirectories(fence.Root,"bap-v3-helper-*",SearchOption.TopDirectoryOnly);
             foreach(var dir in dirs) {
-                var work=System.IO.Path.GetFileName(dir);if(!Regex.IsMatch(work,@"\Abap-helper-[0-9a-f]{32}\z")) throw Bad();fence.AssertPrivateDirectory(work);
-                using(var plan=Maybe(fence,work+"/plan")) if(plan!=null) using(var committed=Maybe(fence,work+"/committed")) {
-                    if(committed==null) return true;
-                    if(Encoding.ASCII.GetString(UpdateTicket.Read(committed,128))!=UpdateTrust.Hash(UpdateTicket.Read(plan,2048))+"\n") throw Bad();
+                var work=System.IO.Path.GetFileName(dir);if(!Regex.IsMatch(work,@"\Abap-v3-helper-[0-9a-f]{32}\z")) throw Bad();fence.AssertPrivateDirectory(work);
+                using(var plan=Maybe(fence,work+"/plan"))using(var committed=Maybe(fence,work+"/committed")) {
+                    if(plan==null){if(committed!=null || ++active>64)throw Bad();continue;}
+                    var bytes=UpdateTicket.Read(plan,2048);foreach(var value in bytes)if(value>127 || value==13)throw Bad();
+                    var lines=Encoding.ASCII.GetString(bytes).Split('\n');
+                    if(lines.Length!=8 || lines[0]!="BetterAstralParty.HelperInstall/v1" || lines[1]!="root="+fence.RootIdentity.Text
+                        || lines[2]!="work="+work || lines[3]!="work-id="+fence.DirectoryIdentity(work).Text
+                        || !Regex.IsMatch(lines[4],@"\Adescriptor=[0-9A-F]{64}\z") || !Regex.IsMatch(lines[5],@"\Aimage-id=[0-9A-F]{8}:[0-9A-F]{16}\z")
+                        || !Regex.IsMatch(lines[6],@"\Areceipt-id=[0-9A-F]{8}:[0-9A-F]{16}\z") || lines[7]!="")throw Bad();
+                    if(committed==null){if(++active>64)throw Bad();pending=true;}
+                    else if(Encoding.ASCII.GetString(UpdateTicket.Read(committed,128))!=UpdateTrust.Hash(bytes)+"\n")throw Bad();
                 }
             }
-            return false;
+            return pending;
         }
         internal static HelperInstallResult Install(WindowsFileFence fence,byte[] descriptor,byte[] envelopeBytes,byte[] image,UpdateTrust trust,Action<string>? boundary=null) {
             if(!trust.Configured) throw new UpdateValidationException(UpdateFailure.NotConfigured);
@@ -180,7 +188,7 @@ namespace BetterAstralParty.Updating {
                     }
                 }
                 if(alreadyInstalled) return Fingerprint(fence,trust)==verified.Sha256 ? HelperInstallResult.AlreadyInstalled : HelperInstallResult.ManualUpgradeRequired;
-                var work="bap-helper-"+Guid.NewGuid().ToString("N");var workId=fence.CreatePrivateDirectory(work);
+                var work="bap-v3-helper-"+Guid.NewGuid().ToString("N");var workId=fence.CreatePrivateDirectory(work);
                 Write(fence,work+"/descriptor",descriptor);Write(fence,work+"/signature",envelopeBytes);Write(fence,work+"/image",image);
                 string imageId;using(var source=fence.OpenFile(work+"/image")) imageId=source.Identity.Text;
                 Write(fence,work+"/receipt",ReceiptBytes(fence,verified,imageId));
@@ -203,7 +211,7 @@ namespace BetterAstralParty.Updating {
         internal static byte[] WholeReceiptBytes(WindowsFileFence fence,HelperDescriptor descriptor,string imageId) {return ReceiptBytes(fence,descriptor,imageId);}
         internal static void FinishWholeMigration(WindowsFileFence fence,string work,UpdateTrust trust,Action<string>? boundary) {Finish(fence,work,trust,boundary);}
         private static void Finish(WindowsFileFence fence,string work,UpdateTrust trust,Action<string>? boundary) {
-            if(!Regex.IsMatch(work,@"\Abap-helper-[0-9a-f]{32}\z")) throw Bad();
+            if(!Regex.IsMatch(work,@"\Abap-v3-helper-[0-9a-f]{32}\z")) throw Bad();
             fence.AssertPrivateDirectory(work);byte[] plan,desc,sig;
             using(var file=fence.OpenFile(work+"/plan")) plan=UpdateTicket.Read(file,2048);
             var lines=Encoding.ASCII.GetString(plan).Split('\n');

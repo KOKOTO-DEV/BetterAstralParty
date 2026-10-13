@@ -1,4 +1,5 @@
 using System.Text;
+using System.Reflection.Metadata;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using BetterAstralParty.Updating;
@@ -117,7 +118,7 @@ internal static class WholeChannelTransitionFixture
         var old = InstallReceipt.Parse(oldReceipt);
         var oldChannels = old.Channels ?? throw new Exception("Stable channel history required");
         Check(oldChannels.ActiveChannel == "Stable" && oldChannels.BetaVersion == null && oldChannels.BetaDescriptor == "-",
-            name + ": real Stable1.1.2 receipt has unvisited Beta history");
+            name + ": real supported Stable baseline receipt has unvisited Beta history");
         var water = Encoding.ASCII.GetBytes("BetterAstralParty.HighWater/v1\nroot=" + target.RootIdentity.Text + "\nversion=" + stable.Descriptor.Version
             + "\ndescriptor=" + stable.Descriptor.DescriptorSha256 + "\n");
         Write(target, UpdateTransaction.HighWaterPath, water);
@@ -137,7 +138,7 @@ internal static class WholeChannelTransitionFixture
                 label => { if (label == boundary) { hit = true; throw new Interruption(); } }); } catch (Interruption) { }
             Check(hit, name + ": exact automatic boundary interrupted");
         }
-        var work = Path.GetFileName(Directory.GetDirectories(root, "bap-txn-*").Single());
+        var work = Path.GetFileName(Directory.GetDirectories(root, "bap-v3-txn-*").Single());
         var committed = name != "rollback";
         for (var attempt = 0; attempt < 2; attempt++) {
             Check(UpdateTransaction.Recover(target, work, UpdateTrust.Production(), selection) == (committed ? TransactionResult.Committed : TransactionResult.RolledBack),
@@ -210,7 +211,7 @@ internal static class WholeChannelTransitionFixture
                 && receipt.Channels.StableDescriptor == old.Channels.StableDescriptor, name + ": Beta active receipt preserves Stable history and loader baseline");
             foreach (var item in beta.Descriptor.Files) Check(receipt.Files[item.Path] == item.Sha256 && UpdateTrust.Hash(Read(target, item.Path)) == item.Sha256,
                 name + ": exact active owned8 hash " + item.Path);
-            Check(HelperDelivery.Fingerprint(target, UpdateTrust.Production(), 2) == beta.Helper.Sha256, name + ": public-verified helper is exactly current");
+            Check(HelperDelivery.Fingerprint(target, UpdateTrust.Production(), 3) == beta.Helper.Sha256, name + ": public-verified helper is exactly current");
             var removal = HelperDelivery.RemovedEvidence(target, UpdateTrust.Production(), Read(target, HelperDescriptor.Image), Read(target, HelperDelivery.Receipt, 1024));
             Check(removal.StartsWith("BetterAstralParty.RemovedHelperEvidence/v1\n", StringComparison.Ordinal), name + ": copied removal helper proof uses signed original object history");
             Reject(() => WholeInstallBridge.Validate(root, stable.Fence.Root, stable.Descriptor.Version), name + ": reverse older whole install remains blocked");
@@ -302,7 +303,7 @@ internal static class WholeChannelTransitionFixture
         var water = Encoding.ASCII.GetBytes("BetterAstralParty.HighWater/v1\nroot=" + target.RootIdentity.Text + "\nversion=" + initial.Descriptor.Version
             + "\ndescriptor=" + initial.Descriptor.DescriptorSha256 + "\n");
         Write(target, UpdateTransaction.HighWaterPath, water);
-        var helperBefore = HelperDelivery.Fingerprint(target, UpdateTrust.Production(), 2);
+        var helperBefore = HelperDelivery.Fingerprint(target, UpdateTrust.Production(), 3);
         foreach (var path in missing) Remove(target, path);
         var removalBefore = Snapshot(target);
         WholeInstallBridge.ValidatePartialRemoval(root);
@@ -317,7 +318,7 @@ internal static class WholeChannelTransitionFixture
         foreach (var file in beta.Descriptor.Files) Check(installed.Files[file.Path] == file.Sha256 && UpdateTrust.Hash(Read(target, file.Path)) == file.Sha256,
             name + ": exact repaired signed owned file " + file.Path);
         Check(InstalledPluginMetadata.Read(Read(target, UpdateTrust.PluginPath)).Version == beta.Descriptor.Version, name + ": actual plugin version preserved/replaced as requested");
-        Check(HelperDelivery.Fingerprint(target, UpdateTrust.Production(), 2) == beta.Helper.Sha256 && (upgrade || helperBefore == beta.Helper.Sha256),
+        Check(HelperDelivery.Fingerprint(target, UpdateTrust.Production(), 3) == beta.Helper.Sha256 && (upgrade || helperBefore == beta.Helper.Sha256),
             name + ": exact signed helper remains valid");
         Check(Read(target, UpdateTransaction.HighWaterPath, 2048).SequenceEqual(water), name + ": same-install high-water history is not retired");
         foreach (var item in preserved) Check(Read(target, item.Key).SequenceEqual(item.Value), name + ": shared/user/unknown bytes preserved " + item.Key);
@@ -342,8 +343,8 @@ internal static class WholeChannelTransitionFixture
                 "missing-helper-pair" => new[] { HelperDescriptor.Image, HelperDelivery.Receipt },
                 "wrong-channel-root" => new[] { "BetterAstralParty-Launcher.exe", InstallReceipt.Path },
                 "same-build-different-receipt-hash" => new[] { "BetterAstralParty-Launcher.exe", InstallReceipt.Path },
-                "pending-reinstall" => new[] { "BetterAstralParty.reinstall.pending" },
-                "pending-operation" => new[] { "BetterAstralParty.update.operation" },
+                "pending-reinstall" => new[] { "BetterAstralParty.reinstall-v3.pending" },
+                "pending-operation" => new[] { "BetterAstralParty.update-v3.operation" },
                 _ => new[] { "BetterAstralParty-Launcher.exe" }
             };
             var originals = paths.ToDictionary(path => path, path => File.Exists(target.Full(path)) ? Read(target, path) : null, StringComparer.Ordinal);
@@ -374,10 +375,25 @@ internal static class WholeChannelTransitionFixture
             }
             if (kind.Contains("helper", StringComparison.Ordinal)) Remove(target, "BetterAstralParty-Launcher.exe");
             var before = Snapshot(target);
-            Reject(() => WholeInstallBridge.Validate(root, beta.Fence.Root, beta.Descriptor.Version), kind + ": bounded repair rejects missing core evidence/changed present files/pending work");
-            if(kind is "missing-plugin" or "missing-install-receipt" or "changed-launcher" or "missing-helper-pair") {
+            if (kind == "missing-plugin") {
+                // The exact incoming signed package authenticates this unchanged receipt.
+                // Removing the plugin alone must not erase its root/channel/version proof.
+                var missingObservation = WholeInstallBridge.Validate(root, beta.Fence.Root, beta.Descriptor.Version);
+                var receiptBytes = Read(target, InstallReceipt.Path, 16384);
+                var missingReceipt = InstallReceipt.Parse(receiptBytes);
+                Check(missingObservation.Contains("root=" + target.RootIdentity.Text + "\n", StringComparison.Ordinal)
+                    && missingObservation.Contains("plugin=-\n", StringComparison.Ordinal)
+                    && missingObservation.Contains("receipt=" + UpdateTrust.Hash(receiptBytes) + "\n", StringComparison.Ordinal)
+                    && missingObservation.Contains("update=" + beta.Descriptor.DescriptorSha256 + "\n", StringComparison.Ordinal)
+                    && missingObservation.Contains("helper=" + beta.Helper.DescriptorHash + "\n", StringComparison.Ordinal),
+                    kind + ": read-only observation binds native root, missing plugin, unchanged receipt and exact incoming signed proof");
+                Check(missingReceipt.Channels?.Root == target.RootIdentity.Text && missingReceipt.Channels.ActiveChannel == "Beta"
+                    && missingReceipt.Channels.ActiveVersion == beta.Descriptor.Version && missingReceipt.Channels.ActiveRepositoryId == beta.Descriptor.RepositoryId
+                    && missingReceipt.Files.All(pair => beta.Descriptor.Files.Any(file => file.Path == pair.Key && file.Sha256 == pair.Value)),
+                    kind + ": authenticated receipt retains exact installed version/channel/owned hashes");
+            } else Reject(() => WholeInstallBridge.Validate(root, beta.Fence.Root, beta.Descriptor.Version), kind + ": bounded repair rejects missing core evidence/changed present files/pending work");
+            if(kind is "missing-install-receipt" or "changed-launcher" or "missing-helper-pair") {
                 var expected=kind switch {
-                    "missing-plugin" => "OwnedPluginMissing",
                     "missing-install-receipt" => "InstallReceiptMissing",
                     "changed-launcher" => "OwnedFileChanged",
                     _ => "HelperEvidenceMissing"
@@ -385,10 +401,14 @@ internal static class WholeChannelTransitionFixture
                 try { WholeInstallBridge.Validate(root, beta.Fence.Root, beta.Descriptor.Version); throw new Exception("Accepted missing/changed evidence"); }
                 catch(ApplySafetyException error) { Check(error.Failure==ApplyFailure.RecoveryRequired && (string?)error.Data["BapRecoveryReason"]==expected, kind+": specific recovery blocker retained without changing refusal"); }
             }
-            if (kind != "same-build-different-receipt-hash")
+            if (kind == "missing-plugin") {
+                WholeInstallBridge.ValidatePartialRemoval(root);
+                Check(true, kind + ": retained exact signed installed proof permits read-only partial removal");
+            } else if (kind != "same-build-different-receipt-hash")
                 Reject(() => WholeInstallBridge.ValidatePartialRemoval(root), kind + ": production partial-removal validator rejects unsafe evidence");
             var after = Snapshot(target);
-            Check(before.Count == after.Count && before.All(pair => after.TryGetValue(pair.Key, out var hash) && hash == pair.Value), kind + ": rejection makes no owned/history mutation");
+            Check(before.Count == after.Count && before.All(pair => after.TryGetValue(pair.Key, out var hash) && hash == pair.Value), kind +
+                (kind == "missing-plugin" ? ": validation makes no owned/history mutation" : ": rejection makes no owned/history mutation"));
             foreach (var item in originals) {
                 if (hidden.TryGetValue(item.Key, out var hiddenPath)) { using var file = target.OpenFile(hiddenPath, true); file.RenameTo(target, item.Key); }
                 else if (item.Value == null) Remove(target, item.Key);
@@ -406,123 +426,245 @@ internal static class WholeChannelTransitionFixture
         Reject(() => WholeInstallBridge.ValidatePartialRemoval(root), "partial removal: late unknown present file is rejected");
         Check(Read(target, "BetterAstralParty-Launcher.exe").SequenceEqual(unknown), "partial repair: late unknown file remains intact");
     }
-    private static void EmbeddedHelperCase(string scratch, Package stable, Package beta)
+    private static void NoEmbeddedHelperCase(Package package)
     {
-        var root = Path.Combine(scratch, "embedded-helper");
-        Directory.CreateDirectory(Path.Combine(root, "BepInEx/plugins/BetterAstralParty"));
-        Directory.CreateDirectory(Path.Combine(root, "BepInEx/config"));
-        using var target = new WindowsFileFence(root);
-        var preserved = new Dictionary<string, byte[]> {
-            ["AstralParty_INT.exe"] = Encoding.ASCII.GetBytes("inert fixture; never executed\n"),
-            ["doorstop_config.ini"] = Encoding.ASCII.GetBytes("[General]\r\nenabled=false\r\nother=keep\r\n"),
-            [ChannelTransitionIntent.SettingsPath] = Encoding.ASCII.GetBytes("[Updates]\nAutoDownload = false\nApplyAfterExit = false\nUpdateChannel = Beta\n"),
-            ["BepInEx/plugins/OtherMod.dll"] = Encoding.ASCII.GetBytes("inert unrelated mod\n")
+        using var image = new MemoryStream(Read(package.Fence, Source("BetterAstralParty-Launcher.exe")), false);
+        using var pe = new System.Reflection.PortableExecutable.PEReader(image);
+        var metadata = pe.GetMetadataReader();
+        foreach (var handle in metadata.ManifestResources) {
+            var resource = metadata.GetManifestResource(handle);
+            Check(!metadata.GetString(resource.Name).StartsWith("BetterAstralParty.HelperBootstrap.", StringComparison.Ordinal),
+                "baseline launcher has no legacy helper resource");
+            if (!resource.Implementation.IsNil) continue;
+            var directory = pe.PEHeaders.CorHeader!.ResourcesDirectory;
+            var content = pe.GetSectionData(directory.RelativeVirtualAddress).GetContent();
+            var offset = checked((int)resource.Offset);
+            Check(offset >= 0 && offset <= content.Length - 6, "embedded resource is bounded");
+            Check(content[offset + 4] != 77 || content[offset + 5] != 90, "baseline launcher embeds no PE");
+        }
+        Check(true, "actual packaged launcher resource metadata checked without loading or executing it");
+    }
+    private static Dictionary<string, System.Reflection.Assembly> FrozenInspectors(string artifacts)
+    {
+        var project = Directory.GetParent(artifacts)!.FullName;
+        var definitions = new[] {
+            ("1.1.3", "releases/1.1.3-public-20261011/BetterAstralParty-1.1.3", "24B5C52A2D7A471DA6F64478BEFB1993AD8219E7271303CD853DC983800645B4"),
+            ("1.1.4", "releases/1.1.4-public-20261012/BetterAstralParty-1.1.4", "C681E1F6F654657627A353E3F5A686B1E5E3958C3EC7BF53423B2BA217B0CE3D")
         };
-        foreach (var item in preserved) Write(target, item.Key, item.Value);
-        InstallFresh(root, stable);
-        var water = Encoding.ASCII.GetBytes("BetterAstralParty.HighWater/v1\nroot=" + target.RootIdentity.Text + "\nversion=" + stable.Descriptor.Version
-            + "\ndescriptor=" + stable.Descriptor.DescriptorSha256 + "\n");
-        Write(target, UpdateTransaction.HighWaterPath, water);
-        string Slot(string path) { using var file = target.OpenFile(path); return file.Identity.Text + "\t" + file.Hash(); }
-        var oldImage = Slot(HelperDescriptor.Image); var oldHelperReceipt = Slot(HelperDelivery.Receipt); var oldWater = Slot(UpdateTransaction.HighWaterPath);
-        var oldJournals = Snapshot(target).Where(pair => pair.Key.StartsWith("bap-helper-", StringComparison.Ordinal)).ToArray();
-        Check(HelperDelivery.AuthenticatedAt(target, UpdateTrust.Production(), HelperDescriptor.Image, HelperDelivery.Receipt)?.Version == stable.Descriptor.Version,
-            "embedded: actual authenticated Stable1.1.2 helper seed");
+        return definitions.ToDictionary(item => item.Item1, item => {
+            var bytes = File.ReadAllBytes(Path.Combine(project, item.Item2, "artifacts/BetterAstralParty-Launcher.exe"));
+            Check(UpdateTrust.Hash(bytes) == item.Item3, "archive: exact immutable inspector " + item.Item1);
+            return System.Reflection.Assembly.Load(bytes);
+        });
+    }
+    private static Dictionary<string, string> ArchiveSnapshot(string root) => Directory.GetFiles(root, "*", SearchOption.AllDirectories)
+        .ToDictionary(path => path.Substring(root.Length + 1).Replace('\\', '/'), path => UpdateTrust.Hash(File.ReadAllBytes(path)), StringComparer.Ordinal);
+    private static void SameSnapshot(Dictionary<string, string> before, string root, string label)
+    {
+        var after = ArchiveSnapshot(root);
+        Check(before.Count == after.Count && before.All(pair => after.TryGetValue(pair.Key, out var hash) && hash == pair.Value), label);
+    }
+    private static void FrozenProbes(string root, Dictionary<string, System.Reflection.Assembly> inspectors, bool expected, string label)
+    {
+        foreach (var item in inspectors)
+        foreach (var method in new[] { "CheckUpdateState", "GuardMaintenance", "ValidatePartialRemoval" }) {
+            var before = ArchiveSnapshot(root); var accepted = false; Exception? error = null; IDisposable? lease = null;
+            try {
+                var api = item.Value.GetType("SteamLauncher", true)!.GetMethod(method, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)!;
+                lease = api.Invoke(null, new object[] { root }) as IDisposable; accepted = true;
+            } catch (System.Reflection.TargetInvocationException failure) { error = failure.GetBaseException(); }
+            finally { lease?.Dispose(); }
+            Check(accepted == expected && (expected || error != null && error.GetType().FullName == typeof(ApplySafetyException).FullName && error.Message == "Update safety: RecoveryRequired"),
+                label + ": frozen " + item.Key + "/" + method + (expected ? " accepts" : " refuses pending"));
+            SameSnapshot(before, root, label + ": frozen inspection is read-only " + item.Key + "/" + method);
+        }
+    }
+    private static string ArchiveRoot(string scratch, string name, Package beta)
+    {
+        var root = Path.Combine(scratch, "archive-" + name);
+        Directory.CreateDirectory(Path.Combine(root, "BepInEx/plugins/BetterAstralParty"));
+        using (var fence = new WindowsFileFence(root)) {
+            Write(fence, "AstralParty_INT.exe", Encoding.ASCII.GetBytes("inert archive fixture; never executed\n"));
+            Write(fence, "BepInEx/plugins/OtherMod.dll", Encoding.ASCII.GetBytes("preserve unrelated mod\n"));
+        }
+        InstallFresh(root, beta); return root;
+    }
+    private static void FrozenSeed(string root, Package package, System.Reflection.Assembly assembly)
+    {
+        var api = assembly.GetType("SteamLauncher", true)!;
+        object? Invoke(string method, params string[] arguments) => api.GetMethod(method, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)!.Invoke(null, arguments.Cast<object>().ToArray());
+        var observation = (string)Invoke("ValidateWholeBridge", root, package.Fence.Root, package.Descriptor.Version)!;
+        var receipt = (string)Invoke("PrepareWholeReceipt", root, package.Fence.Root, package.Descriptor.Version, observation, "false")!;
+        using (var operation = (IDisposable)Invoke("BeginWholeInstall", root, package.Fence.Root, package.Descriptor.Version, observation, receipt)!)
+        using (var target = new WindowsFileFence(root)) CopyOwned(target, package, Encoding.ASCII.GetBytes(receipt));
+        Invoke("InstallWholeHelper", root, package.Fence.Root, package.Descriptor.Version, observation, UpdateTrust.Hash(Encoding.ASCII.GetBytes(receipt)));
+    }
+    private static (string Observation, byte[] Receipt, string Work) CurrentIntent(string root, Package beta, bool copy)
+    {
         var observation = WholeInstallBridge.Validate(root, beta.Fence.Root, beta.Descriptor.Version);
+        Check(observation.Contains("mode=Current\n", StringComparison.Ordinal), "archive: actual Current observation");
         var receipt = Prepared(root, beta, observation);
-        Check(!WholeInstallBridge.Pending(target), "embedded: receipt preparation creates no whole intent");
-        // Simulate a completed owned8 delivery only; do not invoke the whole helper migration.
-        var archive = "fixture-owned8-" + Guid.NewGuid().ToString("N"); target.CreatePrivateDirectory(archive);
-        var owned = beta.Descriptor.Files.Select(file => file.Path).Append(InstallReceipt.Path).ToArray();
-        for (var i = 0; i < owned.Length; i++) {
-            var path = owned[i]; var bytes = path == InstallReceipt.Path ? receipt : Read(beta.Fence, Source(path));
-            if (path != InstallReceipt.Path) {
-                var signed = beta.Descriptor.Files.Single(file => file.Path == path);
-                Check(bytes.LongLength == signed.Bytes && UpdateTrust.Hash(bytes) == signed.Sha256, "embedded: signed delivery bytes " + path);
+        using (WholeInstallBridge.BeginInstall(root, beta.Fence.Root, beta.Descriptor.Version, observation, Encoding.ASCII.GetString(receipt)))
+            if (copy) using (var target = new WindowsFileFence(root)) CopyOwned(target, beta, receipt);
+        var work = Directory.GetDirectories(root, "bap-v3-wholeintent-*").Select(Path.GetFileName)
+            .Single(name => File.ReadAllText(Path.Combine(root, name!, "plan")).StartsWith("BetterAstralParty.WholeInstallIntent/v2\n", StringComparison.Ordinal))!;
+        return (observation, receipt, work);
+    }
+    private static Dictionary<string, string> IntentFacts(string root, string work)
+    {
+        using var target = new WindowsFileFence(root);
+        var facts = new Dictionary<string, string>(StringComparer.Ordinal) { ["directory"] = target.DirectoryIdentity(work).Text };
+        foreach (var file in Directory.GetFiles(Path.Combine(root, work))) {
+            using var held = target.OpenLaunchImage(work + "/" + Path.GetFileName(file));
+            facts[Path.GetFileName(file)] = held.Identity.Text + "\t" + held.Hash();
+        }
+        return facts;
+    }
+    private static string ArchivedIntent(string root, string work, Dictionary<string, string> before, string terminal)
+    {
+        var history = "bap-v3-wholehist-" + work.Substring("bap-v3-wholeintent-".Length);
+        Check(!Directory.Exists(Path.Combine(root, work)) && Directory.Exists(Path.Combine(root, history)), "archive: terminal directory leaves old scanning prefix");
+        var after = IntentFacts(root, history);
+        Check(before.All(pair => after.TryGetValue(pair.Key, out var fact) && fact == pair.Value), "archive: directory and all prior file IDs/hashes unchanged");
+        Check(File.ReadAllText(Path.Combine(root, history, "plan")).Contains("work=" + work + "\n", StringComparison.Ordinal), "archive: plan retains exact logical original work name");
+        Check(File.ReadAllText(Path.Combine(root, history, terminal)) == UpdateTrust.Hash(File.ReadAllBytes(Path.Combine(root, history, "plan"))) + "\n", "archive: terminal hash binds unchanged plan");
+        using (var target = new WindowsFileFence(root)) { UpdateLaunchGate.Check(target); Check(!WholeInstallBridge.Pending(target), "archive: current native gate validates terminal history"); }
+        return history;
+    }
+    private static void TerminalArchiveCases(string scratch, string artifacts, Package beta)
+    {
+        var inspectors = FrozenInspectors(artifacts);
+        foreach (var name in new[] { "normal", "recover-after-marker", "begin-after-marker", "cancelled" }) {
+            var root = ArchiveRoot(scratch, name, beta);
+            if (name == "cancelled") using (var target = new WindowsFileFence(root)) Remove(target, "BetterAstralParty-Launcher.exe");
+            var current = CurrentIntent(root, beta, name != "cancelled");
+            var facts = IntentFacts(root, current.Work);
+            FrozenProbes(root, inspectors, false, name + " pending v2");
+            using (var target = new WindowsFileFence(root)) Reject(() => UpdateLaunchGate.Check(target), name + ": current gate refuses pending v2");
+            if (name == "cancelled") WholeInstallBridge.Recover(root, beta.Fence.Root, beta.Descriptor.Version);
+            else if (name == "normal") WholeInstallBridge.Install(root, beta.Fence.Root, beta.Descriptor.Version, current.Observation, UpdateTrust.Hash(current.Receipt));
+            else {
+                var interrupted = false;
+                try { WholeInstallBridge.Install(root, beta.Fence.Root, beta.Descriptor.Version, current.Observation, UpdateTrust.Hash(current.Receipt), boundary => {
+                    if (boundary == "before:whole-history-archive") { interrupted = true; throw new Interruption(); }
+                }); } catch (Interruption) { }
+                Check(interrupted && File.Exists(Path.Combine(root, current.Work, "committed")), name + ": interruption preserves completed v2 before archive");
+                FrozenProbes(root, inspectors, false, name + " completed v2 still visible");
+                var before = ArchiveSnapshot(root);
+                WholeInstallBridge.Validate(root, beta.Fence.Root, beta.Descriptor.Version);
+                SameSnapshot(before, root, name + ": read-only validation does not archive terminal leftover");
+                if (name == "recover-after-marker") WholeInstallBridge.Recover(root, beta.Fence.Root, beta.Descriptor.Version);
+                else {
+                    var next = CurrentIntent(root, beta, true);
+                    Check(next.Work != current.Work, "archive: BeginInstall archives completed leftover before creating a new Current intent");
+                    WholeInstallBridge.Install(root, beta.Fence.Root, beta.Descriptor.Version, next.Observation, UpdateTrust.Hash(next.Receipt));
+                }
             }
-            Write(target, archive + "/new-" + i, bytes);
-            using (var old = target.OpenFile(path, true)) { old.RenameTo(target, archive + "/old-" + i); old.Flush(); }
-            using (var next = target.OpenFile(archive + "/new-" + i, true)) { next.RenameTo(target, path); next.Flush(); }
-        }
-        Check(Slot(HelperDescriptor.Image) == oldImage && Slot(HelperDelivery.Receipt) == oldHelperReceipt
-            && !WholeInstallBridge.Pending(target), "embedded: owned8 delivery retains authenticated old helper and creates no whole pending intent");
-        var assembly = System.Reflection.Assembly.Load(Read(beta.Fence, Source("BetterAstralParty-Launcher.exe")));
-        var names = new[] { "descriptor", "signature", "image" };
-        Check(assembly.GetManifestResourceNames().Order().SequenceEqual(names.Select(name => AutomaticHelperUpgrade.ResourcePrefix + name).Order()),
-            "embedded: actual launcher contains exactly three helper resources");
-        byte[] Resource(string name, long limit) {
-            using var stream = assembly.GetManifestResourceStream(AutomaticHelperUpgrade.ResourcePrefix + name) ?? throw new Exception("Missing actual helper resource");
-            if (stream.Length < 1 || stream.Length > limit) throw new Exception("Helper resource size bound");
-            var bytes = new byte[checked((int)stream.Length)]; stream.ReadExactly(bytes); return bytes;
-        }
-        var descriptor = Resource("descriptor", UpdateTrust.MaxDescriptorBytes); var signature = Resource("signature", 1024); var image = Resource("image", UpdateTrust.MaxFileBytes);
-        var embedded = HelperDescriptor.Verify(UpdateTrust.Production(), descriptor, DetachedSignature.Parse(signature), image, "1.1.3-rc.3.local.3");
-        Check(embedded.Protocol == 2 && embedded.Version != beta.Helper.Version && embedded.DescriptorHash != beta.Helper.DescriptorHash,
-            "embedded: production-verified helper3 is distinct from final whole helper4");
-        var context = new UpdateContext(stable.Descriptor.Repository, "Stable", stable.Descriptor.Version, stable.Descriptor.Version,
-            stable.Descriptor.ReleaseId, stable.Descriptor.AssetId, stable.Descriptor.Platform, repositoryId: stable.Descriptor.RepositoryId);
-        UpdateFaults.Fail(target, context, FaultPhase.Download, FaultReason.Network);
-        var fault = Slot(UpdateFaults.FailurePath);
-        var repairObservation = WholeInstallBridge.Validate(root, beta.Fence.Root, beta.Descriptor.Version);
-        var repairReceipt = Prepared(root, beta, repairObservation);
-        var before = owned.ToDictionary(path => path, Slot, StringComparer.Ordinal);
-        var interrupted = false;
-        try { using var lease = new UpdateLaunchGate.Lease(root, fence => AutomaticHelperUpgrade.Ensure(fence, descriptor, signature, image,
-            UpdateTrust.Production(), label => { if (label == "intent") { interrupted = true; throw new Interruption(); } })); } catch (Interruption) { }
-        Check(interrupted && AutomaticHelperUpgrade.Pending(target) && !HelperDelivery.PendingInstall(target),
-            "embedded: interruption leaves only the durable automatic intent, before any child helper plan");
-        var pending = Snapshot(target);
-        void Deny(Action action, string name) {
-            Reject(action, "embedded intent-only: " + name);
-            var after = Snapshot(target);
-            Check(pending.Count == after.Count && pending.All(pair => after.TryGetValue(pair.Key, out var hash) && hash == pair.Value),
-                "embedded intent-only: " + name + " does not mutate files");
-        }
-        Deny(() => WholeInstallBridge.Validate(root, beta.Fence.Root, beta.Descriptor.Version), "whole Validate rejects");
-        Deny(() => { using var lease = WholeInstallBridge.GuardRecovery(root, beta.Fence.Root, beta.Descriptor.Version); }, "GuardRecovery rejects");
-        Deny(() => { using var lease = WholeInstallBridge.BeginInstall(root, beta.Fence.Root, beta.Descriptor.Version, repairObservation, Encoding.ASCII.GetString(repairReceipt)); }, "BeginInstall rejects");
-        Deny(() => WholeInstallBridge.Recover(root, beta.Fence.Root, beta.Descriptor.Version), "whole Recover rejects");
-        for (var attempt = 0; attempt < 2; attempt++) {
-            var previous = Snapshot(target);
-            using (var lease = new UpdateLaunchGate.Lease(root, fence => AutomaticHelperUpgrade.Ensure(fence, assembly))) { }
-            Check(HelperDelivery.Fingerprint(target, UpdateTrust.Production(), 2) == embedded.Sha256
-                && HelperDelivery.AuthenticatedAt(target, UpdateTrust.Production(), HelperDescriptor.Image, HelperDelivery.Receipt)?.DescriptorHash == embedded.DescriptorHash,
-                "embedded: actual Assembly overload installs/resumes helper3 " + attempt);
-            foreach (var item in before) Check(Slot(item.Key) == item.Value, "embedded: owned8/receipt object and hash unchanged " + item.Key);
-            Check(Slot(UpdateTransaction.HighWaterPath) == oldWater && Read(target, UpdateTransaction.HighWaterPath, 2048).SequenceEqual(water)
-                && Slot(UpdateFaults.FailurePath) == fault, "embedded: retained high-water and fault latch unchanged");
-            foreach (var item in preserved) Check(Read(target, item.Key).SequenceEqual(item.Value), "embedded: unrelated/shared/user bytes unchanged " + item.Key);
-            foreach (var item in oldJournals) Check(UpdateTrust.Hash(Read(target, item.Key)) == item.Value, "embedded: original helper journal retained " + item.Key);
-            var work = Path.GetFileName(Directory.GetDirectories(root, "bap-helperauto-*").Single());
-            Check(Slot(work + "/old-image") == oldImage && Slot(work + "/old-receipt") == oldHelperReceipt
-                && HelperDelivery.ArchivedFingerprint(target, UpdateTrust.Production(), work + "/old-image", work + "/old-receipt") == stable.Helper.Sha256,
-                "embedded: old signed helper image/receipt archive retain original file IDs");
-            Check(!AutomaticHelperUpgrade.Pending(target) && !HelperDelivery.PendingInstall(target) && !WholeInstallBridge.Pending(target), "embedded: no active helper or whole work remains");
-            if (attempt == 1) {
-                var after = Snapshot(target);
-                Check(previous.Count == after.Count && previous.All(pair => after.TryGetValue(pair.Key, out var hash) && hash == pair.Value), "embedded: second Ensure is a complete file no-op");
+            var history = ArchivedIntent(root, current.Work, facts, name == "cancelled" ? "cancelled" : "committed");
+            FrozenProbes(root, inspectors, true, name + " archived terminal");
+            if (name == "normal") {
+                var marker = Path.Combine(root, history, "committed"); var saved = File.ReadAllBytes(marker);
+                File.WriteAllText(marker, new string('0', 64) + "\n");
+                var before = ArchiveSnapshot(root);
+                using (var target = new WindowsFileFence(root)) Reject(() => UpdateLaunchGate.Check(target), "archive: changed terminal history marker remains a current safety blocker");
+                SameSnapshot(before, root, "archive: malformed terminal marker refusal writes nothing");
+                File.WriteAllBytes(marker, saved);
+                var hidden = marker + ".fixture-hidden"; File.Move(marker, hidden);
+                before = ArchiveSnapshot(root);
+                using (var target = new WindowsFileFence(root)) Reject(() => UpdateLaunchGate.Check(target), "archive: history without terminal marker is never treated as completed");
+                SameSnapshot(before, root, "archive: missing terminal marker refusal writes nothing");
+                File.Move(hidden, marker);
             }
         }
-        File.WriteAllText(Path.Combine(scratch, "embedded-helper-result.json"), JsonSerializer.Serialize(new {
-            Passed = true, Root = target.RootIdentity.Text, PluginVersion = beta.Descriptor.Version, EmbeddedHelperVersion = embedded.Version,
-            EmbeddedHelperSha256 = embedded.Sha256, EmbeddedDescriptorSha256 = embedded.DescriptorHash,
-            WholeHelperVersion = beta.Helper.Version, IntentOnlyWholeRefusals = 4, OldImage = oldImage, OldReceipt = oldHelperReceipt,
-            Scope = "Actual public-signed launcher resources and production Assembly overload; scratch-only owned8 delivery simulation, not legacy-client automatic-update execution."
-        }));
+        var generations = ArchiveRoot(scratch, "same-version-generations", beta);
+        var initial = File.ReadAllBytes(Path.Combine(generations, InstallReceipt.Path));
+        var previous = CurrentIntent(generations, beta, true);
+        WholeInstallBridge.Install(generations, beta.Fence.Root, beta.Descriptor.Version, previous.Observation, UpdateTrust.Hash(previous.Receipt));
+        using (var target = new WindowsFileFence(generations)) foreach (var path in InstallReceipt.Owned.Concat(new[] { InstallReceipt.Path, HelperDescriptor.Image, HelperDelivery.Receipt })) Remove(target, path);
+        InstallFresh(generations, beta);
+        var nextReceipt = File.ReadAllBytes(Path.Combine(generations, InstallReceipt.Path));
+        Check(!initial.SequenceEqual(nextReceipt), "archive: fresh same-signed-version generation has a distinct receipt nonce/hash");
+        using (var target = new WindowsFileFence(generations)) Remove(target, UpdateTrust.PluginPath);
+        var snapshot = ArchiveSnapshot(generations);
+        WholeInstallBridge.ValidatePartialRemoval(generations);
+        SameSnapshot(snapshot, generations, "archive: valid current generation proof is found past valid older different-receipt history without mutation");
+        var cancelled = Path.Combine(scratch, "acn"); // Frozen helper atomic marker names also obey the existing 240-character fence.
+        Directory.CreateDirectory(Path.Combine(cancelled, "BepInEx/plugins/BetterAstralParty"));
+        using (var target = new WindowsFileFence(cancelled)) Write(target, "AstralParty_INT.exe", Encoding.ASCII.GetBytes("inert frozen seed; never executed\n"));
+        FrozenSeed(cancelled, beta, inspectors["1.1.3"]);
+        Check(!Directory.GetFiles(cancelled, "signed-update.descriptor", SearchOption.AllDirectories).Any(), "archive: frozen v1 seed has no fabricated signed whole proof");
+        using (var target = new WindowsFileFence(cancelled)) Remove(target, "BetterAstralParty-Launcher.exe");
+        var cancellation = CurrentIntent(cancelled, beta, false);
+        var original = IntentFacts(cancelled, cancellation.Work);
+        WholeInstallBridge.Recover(cancelled, beta.Fence.Root, beta.Descriptor.Version);
+        ArchivedIntent(cancelled, cancellation.Work, original, "cancelled");
+        using (var target = new WindowsFileFence(cancelled)) Remove(target, UpdateTrust.PluginPath);
+        var cancelledSnapshot = ArchiveSnapshot(cancelled);
+        Reject(() => WholeInstallBridge.ValidatePartialRemoval(cancelled), "archive: cancelled target proof alone never authorizes missing-core ownership");
+        SameSnapshot(cancelledSnapshot, cancelled, "archive: cancelled target proof refusal preserves all evidence");
+    }
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    private static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool DeviceIoControl(Microsoft.Win32.SafeHandles.SafeFileHandle handle, uint code, byte[] input, uint size, IntPtr output, uint outputSize, out uint returned, IntPtr overlapped);
+    private static void ArchiveJunction(string path, string target)
+    {
+        Directory.CreateDirectory(path);
+        var substitute = Encoding.Unicode.GetBytes(@"\??\" + target); var print = Encoding.Unicode.GetBytes(target);
+        var data = new byte[16 + substitute.Length + print.Length + 4];
+        BitConverter.GetBytes(0xA0000003U).CopyTo(data, 0); BitConverter.GetBytes(checked((ushort)(data.Length - 8))).CopyTo(data, 4);
+        BitConverter.GetBytes(checked((ushort)substitute.Length)).CopyTo(data, 10);
+        BitConverter.GetBytes(checked((ushort)(substitute.Length + 2))).CopyTo(data, 12); BitConverter.GetBytes(checked((ushort)print.Length)).CopyTo(data, 14);
+        substitute.CopyTo(data, 16); print.CopyTo(data, 18 + substitute.Length);
+        using var handle = CreateFileW(path, 0x40000000, 0, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero);
+        if (handle.IsInvalid || !DeviceIoControl(handle, 0x000900A4, data, (uint)data.Length, IntPtr.Zero, 0, out _, IntPtr.Zero))
+            throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+    }
+    private static void DirectoryArchiveRefusals(string scratch)
+    {
+        foreach (var name in new[] { "collision", "wrong-id", "id-race", "reparse-race", "held-child" }) {
+            var root = Path.Combine(scratch, "archive-directory-" + name); Directory.CreateDirectory(root);
+            var work = "bap-v3-wholeintent-" + Guid.NewGuid().ToString("N"); var history = "bap-v3-wholehist-" + work.Substring("bap-v3-wholeintent-".Length);
+            string identity;
+            using (var target = new WindowsFileFence(root)) {
+                identity = target.CreatePrivateDirectory(work).Text; Write(target, work + "/plan", Encoding.ASCII.GetBytes("keep exact source fixture\n"));
+                if (name == "collision") { target.CreatePrivateDirectory(history); Write(target, history + "/unknown.keep", Encoding.ASCII.GetBytes("do not overwrite\n")); }
+            }
+            var source = Path.Combine(root, work); var moved = Path.Combine(root, "fixture-saved-source"); var other = Path.Combine(root, "fixture-other");
+            Directory.CreateDirectory(other); File.WriteAllText(Path.Combine(other, "unknown.keep"), "preserve reparse target\n");
+            var hit = false;
+            using (var target = new WindowsFileFence(root, boundary => {
+                if (boundary != "archive-open" || name is not ("id-race" or "reparse-race")) return;
+                hit = true; Directory.Move(source, moved);
+                if (name == "reparse-race") ArchiveJunction(source, other);
+                else using (var peer = new WindowsFileFence(root)) { peer.CreatePrivateDirectory(work); Write(peer, work + "/unknown.keep", Encoding.ASCII.GetBytes("preserve replacement\n")); }
+            })) {
+                using var child = name == "held-child" ? target.OpenLaunchImage(work + "/plan") : null;
+                Reject(() => target.ArchiveDirectory(work, history, name == "wrong-id" ? "00000000:0000000000000000" : identity), "archive directory: " + name + " refuses unsafe rename");
+            }
+            if (name is "id-race" or "reparse-race") {
+                Check(hit && File.ReadAllText(Path.Combine(moved, "plan")) == "keep exact source fixture\n", "archive directory: exact close/reopen race preserves original object " + name);
+                if (name == "reparse-race") { Check((File.GetAttributes(source) & FileAttributes.ReparsePoint) != 0, "archive directory: actual NTFS reparse substitution tested"); Directory.Delete(source); }
+            } else Check(File.ReadAllText(Path.Combine(source, "plan")) == "keep exact source fixture\n", "archive directory: rejected source preserved " + name);
+            Check(File.ReadAllText(Path.Combine(other, "unknown.keep")) == "preserve reparse target\n", "archive directory: unrelated bytes preserved " + name);
+            if (name == "collision") Check(File.ReadAllText(Path.Combine(root, history, "unknown.keep")) == "do not overwrite\n", "archive directory: no-overwrite collision preserves destination");
+            else Check(!Directory.Exists(Path.Combine(root, history)), "archive directory: refusal publishes no history " + name);
+        }
     }
     internal static void Main(string[] args)
     {
-        if (args.Length != 4 && args.Length != 7) throw new ArgumentException("fresh-scratch artifact-root Stable-package Beta-package [signed-update-ZIP public-game-root public-cache-root]");
+        var archiveOnly = args.Length == 5 && args[4] == "archive-only";
+        if (args.Length != 4 && args.Length != 7 && !archiveOnly) throw new ArgumentException("fresh-scratch artifact-root Stable-package Beta-package [signed-update-ZIP public-game-root public-cache-root | archive-only]");
         var scratch = Path.GetFullPath(args[0]); var artifacts = Path.GetFullPath(args[1]).TrimEnd(Path.DirectorySeparatorChar);
         if (!Path.GetDirectoryName(scratch)!.Equals(artifacts, StringComparison.OrdinalIgnoreCase)
             || !Regex.IsMatch(Path.GetFileName(scratch), @"\Awct-[0-9a-f]{32}\z") || Directory.Exists(scratch) || File.Exists(scratch))
             throw new Exception("Only a new direct artifact scratch may be changed");
         using var stable = new Package(args[2]); using var beta = new Package(args[3]);
-        Check(stable.Descriptor.Channel == "Stable" && stable.Descriptor.Version == "1.1.2" && stable.Descriptor.RepositoryId == ReleaseFeedPolicy.StableRepositoryId,
-            "exact public Stable1.1.2 signed baseline");
+        Check(stable.Descriptor.Channel == "Stable" && stable.Descriptor.Protocol == 3 && UpdateVersion.Parse(stable.Descriptor.Version).CompareTo(UpdateVersion.Parse("1.2.1-0")) >= 0 && stable.Descriptor.RepositoryId == ReleaseFeedPolicy.StableRepositoryId,
+            "exact public supported Stable baseline signed baseline");
         Check(beta.Descriptor.Channel == "Beta" && beta.Descriptor.RepositoryId == ReleaseFeedPolicy.BetaRepositoryId
             && UpdateVersion.Parse(beta.Descriptor.Version).CompareTo(UpdateVersion.Parse(stable.Descriptor.Version)) > 0,
-            "verified target Beta strictly above Stable1.1.2");
+            "verified target Beta strictly above supported Stable baseline");
         if (Encoding.ASCII.GetString(beta.DescriptorBytes).StartsWith("BetterAstralParty.LocalInstallDescriptor/v1\n", StringComparison.Ordinal)) {
             Check(beta.Descriptor.ReleaseId == 0 && beta.Descriptor.AssetId == 0 && UpdateVersion.Parse(beta.Descriptor.Version).IsLocalPrerelease, "local proof retains zero remote asset identities");
             var remote = new UpdateContext(beta.Descriptor.Repository, "Beta", "0.0.0", beta.Descriptor.Version, 1, 1, beta.Descriptor.Platform, repositoryId: beta.Descriptor.RepositoryId);
@@ -541,6 +683,17 @@ internal static class WholeChannelTransitionFixture
         }
         Directory.CreateDirectory(scratch);
         try {
+            if (archiveOnly) {
+                TerminalArchiveCases(scratch, artifacts, beta);
+                DirectoryArchiveRefusals(scratch);
+                File.WriteAllText(Path.Combine(scratch, "native-results.json"), JsonSerializer.Serialize(new {
+                    Passed = true, Checks = _checks, StableVersion = stable.Descriptor.Version, BetaVersion = beta.Descriptor.Version,
+                    StableDescriptor = stable.Descriptor.DescriptorSha256, BetaDescriptor = beta.Descriptor.DescriptorSha256,
+                    TerminalArchiveCases = 6, DirectoryArchiveRefusalCases = 5,
+                    Scope = "Production public-signature/native terminal archive and exact immutable1.1.3/1.1.4 inspector API tests; independent process approval cache; only owned scratch, no game/helper Main, operational install/removal, Steam, key or network."
+                }));
+                Console.WriteLine("PASS: " + _checks + " isolated terminal archive/native assertions; evidence retained at " + scratch); return;
+            }
             foreach (var name in new[] { "normal", "cancel-before-owned", "bridge-prepared", "after:old-image", "after:receipt", "after:bridge-committed" })
                 Case(scratch, name, stable, beta);
             PartialRepairCase(scratch, "repair-launcher", stable, beta, new[] { "BetterAstralParty-Launcher.exe" }, false);
@@ -548,15 +701,14 @@ internal static class WholeChannelTransitionFixture
             PartialRepairCase(scratch, "repair-launch-script", stable, beta, new[] { "BetterAstralParty-Mod.cmd", "check-compatibility.ps1" }, false);
             PartialRepairCase(scratch, "repair-all-nonplugin", stable, beta, InstallReceipt.Owned.Where(path => path != UpdateTrust.PluginPath).ToArray(), true);
             PartialRefusals(scratch, beta);
-            var embeddedHelperCases = beta.Descriptor.Version == "1.1.3-rc.3.local.4" ? 1 : 0;
-            if (embeddedHelperCases != 0) EmbeddedHelperCase(scratch, stable, beta);
+            NoEmbeddedHelperCase(stable); NoEmbeddedHelperCase(beta);
             if (zip != null) foreach (var name in new[] { "commit", "rollback", "forward" }) AutomaticCase(scratch, name, stable, beta, zip, args[5], args[6]);
             File.WriteAllText(Path.Combine(scratch, "native-results.json"), JsonSerializer.Serialize(new {
                 Passed = true, Checks = _checks, StableVersion = stable.Descriptor.Version, BetaVersion = beta.Descriptor.Version,
                 StableDescriptor = stable.Descriptor.DescriptorSha256, BetaDescriptor = beta.Descriptor.DescriptorSha256,
                 AutomaticCases = zip == null ? 0 : 3,
                 PartialRepairCases = 4, PartialRefusalCases = 14,
-                EmbeddedHelperCases = embeddedHelperCases,
+                NoEmbeddedHelperCases = 2,
                 Scope = "Production public-signature/native whole bridge and optional signed automatic Apply/recovery in fresh scratch; signed public compatibility input copies only; no game/Steam execution, private key, real install/removal or network."
             }));
             Console.WriteLine("PASS: " + _checks + " signed whole/native scratch assertions; evidence retained at " + scratch);

@@ -52,7 +52,7 @@ internal sealed class UpdateNotificationState
     }
 }
 
-internal enum UpdateNoticeAction { None, Close, Settings }
+internal enum UpdateNoticeAction { None, Close, Settings, ConfirmTransition }
 
 // A press must start and finish on the same owned control. One dispatch per frame.
 internal sealed class UpdateNotificationInput

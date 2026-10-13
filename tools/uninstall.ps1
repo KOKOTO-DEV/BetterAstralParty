@@ -13,7 +13,7 @@ if (!(Test-Path -LiteralPath (Join-Path $root 'package-manifest.json') -PathType
 . (Join-Path $PSScriptRoot 'steam-session.ps1')
 $steamSession = @{ Restart=$false }
 $updaterMaintenance = $null
-$lock = $null; $transaction = $null; $receipt = $null; $removedShortcut = $null
+$lock = $null; $transaction = $null; $receipt = $null; $removedShortcut = $null; $removalLease = $null
 $rollbackExpected = @{}
 $externalBundle = $null; $diagnosticOwner=$null; $diagnosticPhase='Uninstall'
 function Get-UninstallHash([string]$Path) {
@@ -39,7 +39,6 @@ try {
         $AccountId = & (Join-Path $PSScriptRoot 'steam-shortcut.ps1') -Mode ResolveAccount -GameRoot $GameRoot -SteamRoot $steamRoot
     }
     $removeShortcut = & (Join-Path $PSScriptRoot 'steam-shortcut.ps1') -Mode PlanRemove -GameRoot $GameRoot -SteamRoot $steamRoot -AccountId $AccountId
-    if (!$WhatIfPreference) { Stop-BapGame $GameRoot }
     $installedLauncher = Join-Path $GameRoot 'BetterAstralParty-Launcher.exe'
     . (Join-Path $PSScriptRoot 'install-policy.ps1')
     $externalBundle = Open-BapInstallBundle -PackageRoot $root -GameRoot $GameRoot
@@ -53,22 +52,22 @@ try {
             $names = @($receipt.PSObject.Properties.Name)
             if (($receipt.schema -isnot [int] -and $receipt.schema -isnot [long]) -or $receipt.schema -ne 1 -or
                 $receipt.owner -isnot [string] -or $receipt.owner -cne 'kr.betterastralparty.mod' -or
-                ($names.Count -ne 4 -and $names.Count -ne 5) -or ($names.Count -eq 5 -and $names -cnotcontains 'channelState') -or @('schema','owner','loaderBefore','files' | Where-Object { $names -cnotcontains $_ }).Count -or
+                $receipt.baseline -cne '1.2.1' -or $names.Count -ne 6 -or @('schema','baseline','channelState','owner','loaderBefore','files' | Where-Object { $names -cnotcontains $_ }).Count -or
                 ($null -ne $receipt.loaderBefore -and $receipt.loaderBefore -isnot [bool]) -or
                 $receipt.files -isnot [Array] -or $receipt.files.Count -gt 8) { throw 'Invalid installation receipt shape' }
-            if($names.Count -eq 5){
-                $validator=(Get-BapInstallVerifier $externalBundle).GetType('SteamLauncher').GetMethod('ValidateInstalledReceipt',[Reflection.BindingFlags]'Public,Static')
-                if(!$validator){throw 'Channel receipt validator required'}
-                $validatorArguments=[object[]]::new(1);$validatorArguments[0]=[byte[]]$receiptBytes;$null=$validator.Invoke($null,$validatorArguments)
-            }
+            $validator=(Get-BapInstallVerifier $externalBundle).GetType('SteamLauncher').GetMethod('ValidateInstalledReceipt',[Reflection.BindingFlags]'Public,Static')
+            if(!$validator){throw 'Channel receipt validator required'}
+            $validatorArguments=[object[]]::new(1);$validatorArguments[0]=[byte[]]$receiptBytes;$null=$validator.Invoke($null,$validatorArguments)
             foreach ($entry in $receipt.files) {
                 if (@($entry.PSObject.Properties).Count -ne 2 -or $entry.path -isnot [string] -or
                     !($externalBundle.Expected.Keys -ccontains $entry.path) -or $hashes.ContainsKey($entry.path) -or
                     $entry.sha256 -isnot [string] -or $entry.sha256 -cnotmatch '\A[A-F0-9]{64}\z') { throw 'Invalid installation receipt entry' }
                 $hashes[$entry.path] = $entry.sha256
             }
-        } catch { $receipt = $null; $hashes = @{}; Write-Warning '설치 기록을 확인할 수 없어 원본을 보존합니다. / Invalid receipt retained; checking individual files.' }
+        } catch { throw [InvalidOperationException]::new(('새 1.2.1 기준판 설치만 제거할 수 있습니다. 이전 설치는 이전 패키지로 제거하세요. / Only the new 1.2.1 baseline is supported; use the previous package to uninstall older installations. '+$_.Exception.GetBaseException().Message), $_.Exception) }
     }
+    elseif (@($externalBundle.Expected.Keys | Where-Object { Test-Path -LiteralPath (Join-Path $GameRoot $_) }).Count) { throw '설치 기록이 없거나 이전 설치가 남아 있습니다. 파일을 보존합니다. / Missing baseline receipt or previous installation retained.' }
+    if (!$WhatIfPreference) { Stop-BapGame $GameRoot }
     $declaredLauncherHash = $hashes['BetterAstralParty-Launcher.exe']
     if ($declaredLauncherHash -and (Test-Path -LiteralPath $installedLauncher -PathType Leaf) -and (Get-UninstallHash $installedLauncher) -cne $declaredLauncherHash) {
         throw '런처가 설치 기록과 다릅니다. 검토된 복구가 필요합니다. / Modified installed launcher; reviewed recovery required before removal.'
@@ -78,6 +77,12 @@ try {
     }
     $updaterMaintenance = Enter-BapUpdateMaintenance $GameRoot -ReadOnly:$WhatIfPreference -VerifiedBundle $externalBundle
     $null = Assert-BapInstallRoot $externalBundle
+    if ($receipt) {
+        $historyValidator=(Get-BapInstallVerifier $externalBundle).GetType('SteamLauncher').GetMethod('ValidateInstalledHistory',[Reflection.BindingFlags]'Public,Static')
+        if(!$historyValidator){throw '현재 설치 이력 검사기가 필요합니다. 최신 전체 설치 묶음을 사용하세요. / Current complete package with installed history validation is required.'}
+        try {$null=$historyValidator.Invoke($null,[object[]]@([string]$GameRoot))}
+        catch {throw [InvalidOperationException]::new(('설치·채널 이력 검증에 실패했습니다. 파일과 백업을 보존하세요. / Installed channel/history validation failed; retain files and backups. '+$_.Exception.GetBaseException().Message), $_.Exception)}
+    }
     # Fixed allowlist; never recursively remove a plugin directory or trust receipt paths.
     $files = @(
         @{ Path='BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll'; Source='artifacts/BetterAstralParty.dll'; Assembly='BetterAstralParty' }
@@ -108,13 +113,13 @@ try {
                 $targets += @($helperPath,$helperReceipt)
                 $plannedHashes[$helperPath] = $verifiedImage; $plannedHashes[$helperReceipt] = $verifiedReceipt
             } else { throw '검증 후 helper 파일이 바뀌었습니다. 제거하지 않고 중단합니다. / Helper changed after verification.' }
-        } else { Write-Warning 'helper의 소유를 확인할 수 없어 파일·기록을 보존합니다. / Unverified update helper and receipt retained.' }
+        } else { $keptReceiptFile=$true; Write-Warning 'helper의 소유를 확인할 수 없어 파일·기록을 보존합니다. / Unverified update helper and receipt retained.' }
     }
     foreach ($file in $files) {
         $path = Join-Path $GameRoot $file.Path
         Assert-InstallTarget $GameRoot $path
         if (!(Test-Path -LiteralPath $path)) {
-            if ($hashes.ContainsKey($file.Path) -and $file.Path -cne 'BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll') { $missingOwned += $path; $plannedHashes[$path] = $null }
+            if ($hashes.ContainsKey($file.Path)) { $missingOwned += $path; $plannedHashes[$path] = $null }
             continue
         }
         if (!(Test-Path -LiteralPath $path -PathType Leaf)) { throw "Expected a file: $path" }
@@ -130,10 +135,17 @@ try {
             Write-Warning "보존: 소유 확인 불가 또는 변경된 파일 / Kept unknown or modified file: $path"
         }
     }
+    if($keptReceiptFile) {
+        # Keep the verified helper provenance with a retained installation receipt for later reviewed repair.
+        foreach($path in @($helperPath,$helperReceipt)) {
+            $targets=@($targets|Where-Object {$_ -cne $path})
+            $plannedHashes.Remove($path)
+        }
+    }
     if ($missingOwned.Count -and !$keptReceiptFile) {
-        $validate=(Get-BapInstallVerifier $externalBundle).GetType('SteamLauncher').GetMethod('ValidatePartialRemoval',[Reflection.BindingFlags]'Public,Static')
-        if (!$validate) { throw '일부 설치 파일이 누락되었습니다. 최신 전체 묶음의 제거기를 사용하세요. / Missing installation files; use the current complete package uninstaller.' }
-        $null=$validate.Invoke($null,[object[]]@([string]$GameRoot))
+        $validate=(Get-BapInstallVerifier $externalBundle).GetType('SteamLauncher').GetMethod('ValidatePartialRemovalWithPackage',[Reflection.BindingFlags]'Public,Static')
+        if(!$validate){throw 'Current partial-removal validation API required.'}
+        $null=$validate.Invoke($null,[object[]]@([string]$GameRoot,[string]$externalBundle.PackageRoot,[string]$externalBundle.Version.Text))
     }
     if ($receipt -and !$keptReceiptFile) { $targets += $receiptPath; $plannedHashes[$receiptPath] = Get-UninstallHash $receiptPath }
     elseif ($keptReceiptFile) { Write-Warning '소유권이 불확실하거나 수정된 파일과 설치 기록을 보존합니다. / Unknown or modified files and their receipt are retained.' }
@@ -171,6 +183,9 @@ try {
             }
         }
     }
+    $backupTargets = @($targets)+@($missingOwned)
+    if ($loaderUpdated -ne $null) { $backupTargets += $loaderPath; $plannedHashes[$loaderPath] = Get-UninstallHash $loaderPath }
+    Assert-BapMaintenancePathPlan $externalBundle $backupTargets
     Write-Host "제거 대상 / Files to remove ($GameRoot):"
     $targets | ForEach-Object { Write-Host "  $_" }
     if ($loaderUpdated -ne $null) { Write-Host "Restore loader enabled=$restore (other settings preserved)" }
@@ -190,33 +205,36 @@ try {
     }
     if (@(Get-BapGameTargets $GameRoot).Count) { throw 'Game/launcher started; removal cancelled.' }
     if ($removeShortcut) { Assert-BapSteamStopped $steamRoot 'UninstallPreflight' }
-    $backupTargets = @($targets)+@($missingOwned)
-    if ($loaderUpdated -ne $null) { $backupTargets += $loaderPath; $plannedHashes[$loaderPath] = Get-UninstallHash $loaderPath }
     $transaction = Start-InstallTransaction $GameRoot $backupTargets 0
     $state = Get-Content -LiteralPath $transaction -Raw -Encoding UTF8 | ConvertFrom-Json
     Write-Host "복구용 백업 / Recovery backup: $($state.BackupDir)"
     foreach ($entry in $state.Entries) {
         if ($entry.Hash -ne $plannedHashes[$entry.Target]) { throw "File changed since confirmation preview: $($entry.Target)" }
     }
+    $nativeRemoval=(Get-BapInstallVerifier $externalBundle).GetType('SteamLauncher').GetMethod('BeginOwnedRemoval',[Reflection.BindingFlags]'Public,Static')
+    if(!$nativeRemoval -or ![IDisposable].IsAssignableFrom($nativeRemoval.ReturnType)){throw 'Held-object removal API required; use a current complete package.'}
+    $removalArguments=[object[]]::new(6)
+    $removalArguments[0]=[string]$GameRoot;$removalArguments[1]=[string](Split-Path -Parent $transaction)
+    $removalArguments[2]=[string](Get-UninstallHash $transaction);$removalArguments[3]=[string[]]$backupTargets
+    $removalArguments[4]=[string]$externalBundle.RootIdentity;$removalArguments[5]=[bool]($loaderUpdated -ne $null)
+    $removalLease=$nativeRemoval.Invoke($null,$removalArguments)
     foreach ($entry in $state.Entries) {
-        Assert-InstallTarget $GameRoot $entry.Target
         if (!$entry.Existed) {
-            if (Test-Path -LiteralPath $entry.Target) { throw "File appeared during uninstall; retained: $($entry.Target)" }
             $rollbackExpected[$entry.Target]=$null
+            $removalLease.Remove([string]$entry.Target)
             continue
         }
-        if ((Get-UninstallHash $entry.Target) -ne $entry.Hash) { throw "File changed during uninstall: $($entry.Target)" }
         if ($entry.Target -eq $loaderPath) {
-            if ([IO.File]::ReadAllText($loaderPath) -ne $loaderText) { throw 'Loader configuration changed during uninstall.' }
             $sha = [Security.Cryptography.SHA256]::Create()
             try { $rollbackExpected[$loaderPath] = [BitConverter]::ToString($sha.ComputeHash([Text.UTF8Encoding]::new($false).GetBytes($loaderUpdated))).Replace('-', '') }
             finally { $sha.Dispose() }
-            [IO.File]::WriteAllText($loaderPath, $loaderUpdated, [Text.UTF8Encoding]::new($false))
-        } else { $rollbackExpected[$entry.Target] = $null; [IO.File]::Delete($entry.Target) }
+            $removalLease.WriteLoader([string]$loaderPath,[string]$loaderUpdated)
+        } else { $rollbackExpected[$entry.Target] = $null; $removalLease.Remove([string]$entry.Target) }
     }
     if ($removeShortcut) {
         $removedShortcut = & (Join-Path $PSScriptRoot 'steam-shortcut.ps1') -Mode Remove -GameRoot $GameRoot -SteamRoot $steamRoot -AccountId $AccountId
     }
+    $removalLease.Dispose();$removalLease=$null
     Complete-InstallTransaction $GameRoot -AllowedTargets $backupTargets -VerifiedBundle $externalBundle
     $transaction = $null
     Write-BapInstallerStage $externalBundle 'Uninstall' 'Completed'
@@ -234,6 +252,7 @@ try {
     }
 } catch {
     $failure = $_
+    if($removalLease){$removalLease.Dispose();$removalLease=$null}
     Write-BapInstallerError $externalBundle $diagnosticPhase $_.Exception
     if ($removedShortcut) {
         try {
@@ -259,6 +278,7 @@ try {
     $null = Write-InstallFailure $failure 'Uninstall' $root $GameRoot -Operation 'Uninstall'
     throw $failure
 } finally {
+    if($removalLease){$removalLease.Dispose()}
     if($diagnosticOwner){$diagnosticOwner.Dispose()}
     if ($lock) { $lock.Dispose() }
     if ($updaterMaintenance) { $updaterMaintenance.Dispose() }

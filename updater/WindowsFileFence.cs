@@ -114,6 +114,13 @@ namespace BetterAstralParty.Updating
             if (trimmed.Length > 3) foreach (var part in trimmed.Substring(3).Split('\\')) Component(part);
             return trimmed;
         }
+        internal static void ValidatePlannedPath(string path) {
+            try {Absolute(path);}
+            catch(ApplySafetyException error) {
+                error.Data["BapRecoveryReason"]=path!=null && path.Length>240?"MaintenancePathTooLong":"MaintenancePathInvalid";
+                throw;
+            }
+        }
         internal string Full(string relative)
         {
             if (_disposed) throw new ObjectDisposedException(nameof(WindowsFileFence));
@@ -296,6 +303,46 @@ namespace BetterAstralParty.Updating
         {
             var path = Full(relative); Parent(path); AddPin(path); Recheck(); return _pins[path].Identity;
         }
+        // Completed journal history moves by identity, never by a replaceable pathname.
+        internal void ArchiveDirectory(string relative, string destination, string expectedIdentity)
+        {
+            Component(relative); Component(destination);
+            var source = Full(relative); var target = Full(destination); var parent = Parent(source);
+            AssertPrivateDirectory(relative); var pin = _pins[source];
+            if (pin.Identity.Text != expectedIdentity) throw new ApplySafetyException(ApplyFailure.IdentityChanged);
+            foreach (var path in _pins.Keys)
+                if (path.StartsWith(source + "\\", StringComparison.OrdinalIgnoreCase)) throw new ApplySafetyException(ApplyFailure.FileBusy);
+            Recheck(); _pins.Remove(source); pin.Dispose();
+            // Reopen under the held parent and require the same object after releasing our read pin.
+            _beforeOperation?.Invoke("archive-open");
+            var handle = OpenRelative(parent, relative, Delete | 0x80 | 0x20000, 1, false, true, false);
+            try {
+                var identity = Identity(ReadInfo(handle, true));
+                if (identity.Text != expectedIdentity || !string.Equals(Final(handle), source, StringComparison.OrdinalIgnoreCase)) throw new ApplySafetyException(ApplyFailure.IdentityChanged);
+                WindowsPrivateSecurity.AssertDirectory(handle); Recheck();
+                _beforeOperation?.Invoke("rename"); RenameHeld(handle, parent, destination);
+                if (!identity.Same(Identity(ReadInfo(handle, true))) || !string.Equals(Final(handle), target, StringComparison.OrdinalIgnoreCase)) throw new ApplySafetyException(ApplyFailure.IdentityChanged);
+                // A DELETE-access pin would prevent independent read-only fences from sharing this history.
+                handle.Dispose(); handle=OpenRelative(parent,destination,0x80 | 0x20000,1,false,true,false);
+                if(!identity.Same(Identity(ReadInfo(handle,true))) || !string.Equals(Final(handle),target,StringComparison.OrdinalIgnoreCase))throw new ApplySafetyException(ApplyFailure.IdentityChanged);
+                WindowsPrivateSecurity.AssertDirectory(handle);
+                _pins.Add(target, new Pin(target, handle, identity)); handle = null!; Recheck();
+            } finally { handle?.Dispose(); }
+        }
+        private static void RenameHeld(SafeFileHandle handle, Pin parent, string leaf)
+        {
+            Component(leaf); var name = Encoding.Unicode.GetBytes(leaf);
+            var buffer = Marshal.AllocHGlobal(20 + name.Length); var referenced = false;
+            try {
+                for (var i = 0; i < 20; i++) Marshal.WriteByte(buffer, i, 0);
+                parent.Handle.DangerousAddRef(ref referenced);
+                Marshal.WriteIntPtr(buffer, 8, parent.Handle.DangerousGetHandle());
+                Marshal.WriteInt32(buffer, 16, name.Length); Marshal.Copy(name, 0, IntPtr.Add(buffer, 20), name.Length);
+                // ReplaceIfExists=false; never overwrite another file or directory.
+                IoStatus io; var status = NtSetInformationFile(handle, out io, buffer, (uint)(20 + name.Length), 10);
+                if (status != 0) throw new ApplySafetyException(ApplyFailure.FileBusy, (int)RtlNtStatusToDosError(status));
+            } finally { if (referenced) parent.Handle.DangerousRelease(); Marshal.FreeHGlobal(buffer); }
+        }
         private Pin Parent(string path)
         {
             var parent = Path.GetDirectoryName(path)!;
@@ -303,8 +350,9 @@ namespace BetterAstralParty.Updating
                 && !string.Equals(parent, Root, StringComparison.OrdinalIgnoreCase)) throw new ApplySafetyException(ApplyFailure.UnsafePath);
             PinPath(parent); Recheck(); return _pins[parent];
         }
+        // Nested proof readers may coexist; writers and deletion remain blocked.
         internal FileLease OpenFile(string relative, bool mutable = false, bool create = false)
-        { return OpenFileCore(relative, mutable, create, 0); }
+        { return OpenFileCore(relative, mutable, create, !mutable && !create ? 1u : 0u); }
         // Verified helper image only: allow execution/read while denying write/delete replacement.
         internal FileLease OpenLaunchImage(string relative)
         { return OpenFileCore(relative, false, false, 1); }
@@ -357,28 +405,12 @@ namespace BetterAstralParty.Updating
                 var destination = destinationFence.Full(relative); var parent = destinationFence.Parent(destination);
                 Recheck(); destinationFence.Recheck();
                 if (Identity.Volume != parent.Identity.Volume) throw new ApplySafetyException(ApplyFailure.UnsafePath);
-                var leaf = System.IO.Path.GetFileName(destination); Component(leaf);
-                var name = Encoding.Unicode.GetBytes(leaf);
-                var buffer = Marshal.AllocHGlobal(20 + name.Length); var referenced = false;
-                try
-                {
-                    for (var i = 0; i < 20; i++) Marshal.WriteByte(buffer, i, 0);
-                    parent.Handle.DangerousAddRef(ref referenced);
-                    Marshal.WriteIntPtr(buffer, 8, parent.Handle.DangerousGetHandle());
-                    Marshal.WriteInt32(buffer, 16, name.Length); Marshal.Copy(name, 0, IntPtr.Add(buffer, 20), name.Length);
-                    destinationFence._beforeOperation?.Invoke("rename");
-                    // ReplaceIfExists=false. Another file occupying the name causes a safe stop.
-                    IoStatus io;
-                    var status = NtSetInformationFile(_handle, out io, buffer, (uint)(20 + name.Length), 10); // FileRenameInformation
-                    if (status != 0)
-                        throw new ApplySafetyException(ApplyFailure.FileBusy, (int)RtlNtStatusToDosError(status));
-                    Path = destination;
-                    _fence = destinationFence;
-                    if (!Identity.Same(WindowsFileFence.Identity(ReadInfo(_handle, false))) || !string.Equals(Final(_handle), Path, StringComparison.OrdinalIgnoreCase))
-                        throw new ApplySafetyException(ApplyFailure.IdentityChanged);
-                    destinationFence.Recheck();
-                }
-                finally { if (referenced) parent.Handle.DangerousRelease(); Marshal.FreeHGlobal(buffer); }
+                destinationFence._beforeOperation?.Invoke("rename");
+                RenameHeld(_handle, parent, System.IO.Path.GetFileName(destination));
+                Path = destination; _fence = destinationFence;
+                if (!Identity.Same(WindowsFileFence.Identity(ReadInfo(_handle, false))) || !string.Equals(Final(_handle), Path, StringComparison.OrdinalIgnoreCase))
+                    throw new ApplySafetyException(ApplyFailure.IdentityChanged);
+                destinationFence.Recheck();
             }
             internal void RemoveDiagnosticPrevious() {
                 if (!_mutable || !Regex.IsMatch(Path.Substring(_fence.Root.Length + 1).Replace('\\','/'), @"\ABepInEx/BetterAstralParty-Diagnostics/minimal-v1/(?:(?:helper|installer)/)?events-previous\.jsonl\z")) throw new ApplySafetyException(ApplyFailure.UnsafePath);
@@ -399,7 +431,7 @@ namespace BetterAstralParty.Updating
                 } finally {Marshal.FreeHGlobal(buffer);}
             }
             internal void RemoveTemporaryPackage() {
-                if (!_mutable || !Regex.IsMatch(Path.Substring(_fence.Root.Length + 1).Replace('\\','/'), @"\Abap-stage-[0-9a-f]{32}/package\.zip\z")) throw new ApplySafetyException(ApplyFailure.UnsafePath);
+                if (!_mutable || !Regex.IsMatch(Path.Substring(_fence.Root.Length + 1).Replace('\\','/'), @"\Abap-v3-stage-[0-9a-f]{32}/package\.zip\z")) throw new ApplySafetyException(ApplyFailure.UnsafePath);
                 Recheck();
                 var buffer=Marshal.AllocHGlobal(1);
                 try {

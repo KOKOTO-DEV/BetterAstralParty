@@ -328,13 +328,13 @@ function RecoveryFile($i,[string]$Name) { return @($i.recovery.files | Where-Obj
 $r=Roots 'recovery-markerless';$markerless=Join-Path $Scratch 'remnants';$null=[IO.Directory]::CreateDirectory($markerless)
 $r.local=Join-Path $Scratch 'state/BetterAstralParty/Logs';$null=[IO.Directory]::CreateDirectory($r.local)
 Put (Join-Path $markerless 'BetterAstralParty.install.json') 'FORBIDDEN_RAW_RECEIPT'
-Put (Join-Path $markerless 'BetterAstralParty.update.version') 'FORBIDDEN_RAW_HIGH_WATER'
-Put (Join-Path $markerless 'BetterAstralParty.update.operation') 'FORBIDDEN_RAW_OPERATION'
+Put (Join-Path $markerless 'BetterAstralParty.update-v3.version') 'FORBIDDEN_RAW_HIGH_WATER'
+Put (Join-Path $markerless 'BetterAstralParty.update-v3.operation') 'FORBIDDEN_RAW_OPERATION'
 Put (Join-Path $markerless 'BetterAstralParty-LaunchError.log') ('2026-10-11T01:00:00Z | System.IO.FileNotFoundException: Assembly Example.Safe.dll missing'+[Environment]::NewLine)
 Put (Join-Path $markerless 'BepInEx/BetterAstralParty-Diagnostics/current.log') ('2026-10-11T01:00:00Z | phase=7'+[Environment]::NewLine+'Authorization: Bearer FORBIDDEN_RAW_RUNTIME'+[Environment]::NewLine)
 $minimal=[ordered]@{schema='bap.minimal-diagnostic/v1';process_session=('9'*32);sequence=1;utc=[DateTimeOffset]::UtcNow.ToString('O');elapsed_ms=0;mod_version='1.1.2';build_id='unknown';runtime_version='6.0';kind='Stage';feature='Helper';phase='Recovery';outcome='Begin';code='None';ui_action='Unknown';error_site='None';error_type='None';operation='-';related_operation='-';target_version='unknown';update_state='RecoveryRequired';count=0;secondary_count=0;native_code=0;validation_code=0;apply_code=0}
 Put (Join-Path $markerless 'BepInEx/BetterAstralParty-Diagnostics/minimal-v1/helper/events-current.jsonl') (($minimal|ConvertTo-Json -Compress)+[Environment]::NewLine+'{"secret":"FORBIDDEN_RAW_MINIMAL"}'+[Environment]::NewLine)
-$workId='a'*32;$tempId='b'*32;$work=Join-Path $markerless ('bap-helperauto-'+$workId)
+$workId='a'*32;$tempId='b'*32;$work=Join-Path $markerless ('bap-v3-helperauto-'+$workId)
 Put (Join-Path $work 'plan') 'FORBIDDEN_RAW_PLAN';Put (Join-Path $work ('committed-pending-'+$tempId)) 'FORBIDDEN_RAW_ATOMIC'
 Put (Join-Path $work 'unrelated-secret.json') 'FORBIDDEN_ARBITRARY_FILE'
 Put (Join-Path $markerless 'BepInEx/config/kr.betterastralparty.mod.cfg') 'FORBIDDEN_FULL_CONFIG'
@@ -342,7 +342,7 @@ $credential=Join-Path $r.local 'credential-store.json';Put $credential 'FORBIDDE
 $secretLock=[IO.File]::Open($credential,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
 $sha=[Security.Cryptography.SHA256]::Create()
 try{$key=[BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes([IO.Path]::GetFullPath($markerless).TrimEnd('\').ToLowerInvariant()))).Replace('-','')}finally{$sha.Dispose()}
-$backup=Join-Path (Split-Path -Parent $r.local) ('Backups/'+$key)
+$backup=Join-Path (Split-Path -Parent $r.local) ('Backups/v3/'+$key)
 Put (Join-Path $backup 'pending.json') 'FORBIDDEN_RAW_INSTALL_PENDING'
 Put (Join-Path $backup (($tempId)+'/completed.json')) 'FORBIDDEN_RAW_COMPLETED'
 Put (Join-Path $backup (($tempId)+'/0.bin')) 'FORBIDDEN_BACKUP_PAYLOAD'
@@ -351,7 +351,7 @@ $receipt=Join-Path $markerless 'BetterAstralParty.install.json';$before=(Get-Fil
 try{$i=Inspect (Collect $r $markerless)}finally{$secretLock.Dispose()}
 Assert (!$i.summary.environment.gameRootValidated -and !$i.recovery.gameMarkersValidated -and !$i.recovery.installationVerified -and !$i.recovery.recoveryAuthenticated) 'markerless fixed-file inventory never upgrades game or recovery validation'
 Assert ((RecoveryFile $i 'game/BetterAstralParty.install.json').sha256 -eq $before -and (RecoveryFile $i 'game/BetterAstralParty-Launcher.exe').present -eq $false) 'markerless receipt hash and missing owned files recorded exactly'
-Assert ((RecoveryFile $i 'game/BetterAstralParty.update.version').present -eq $true -and @($i.recovery.files | Where-Object { $_.source -match 'highwater' }).Count -eq 0) 'actual update.version contract recorded without invented highwater filename'
+Assert ((RecoveryFile $i 'game/BetterAstralParty.update-v3.version').present -eq $true -and @($i.recovery.files | Where-Object { $_.source -match 'highwater' }).Count -eq 0) 'actual update.version contract recorded without invented highwater filename'
 Assert (@($i.recovery.observations | Where-Object {$_.code -eq 'work-marker-observed' -and $_.potentialBlocker -eq $true}).Count -eq 1) 'intent-only work observed as potential blocker without parsing journal'
 Assert (@($i.recovery.observations | Where-Object {$_.code -eq 'unpublished-marker-observed' -and $_.potentialBlocker -eq $true}).Count -eq 1) 'atomic unpublished marker observed with bundle-local alias'
 Assert ((RecoveryFile $i 'installer-backups/pending.json').present -eq $true -and @($i.recovery.files | Where-Object {$_.source -match '/completed.json$'}).Count -eq 1) 'only exact selected-root hash backup pending and completed markers included'
@@ -363,30 +363,31 @@ Put (Join-Path $work 'committed') 'not authenticated terminal bytes';$i=Inspect 
 Assert (@($i.recovery.observations | Where-Object {$_.code -eq 'work-marker-observed' -and $_.potentialBlocker -eq $false}).Count -eq 1 -and !$i.recovery.recoveryAuthenticated) 'terminal marker presence is observation only not authenticated completion'
 $r=Roots 'recovery-work-contracts';$n=0
 foreach($kind in @('helper','helperbridge','helperauto','wholeintent','txn','stage')){
-    $dir=Join-Path $r.game ('bap-'+$kind+'-'+(++$n).ToString('x32'));$null=[IO.Directory]::CreateDirectory($dir)
+    $dir=Join-Path $r.game ('bap-v3-'+$kind+'-'+(++$n).ToString('x32'));$null=[IO.Directory]::CreateDirectory($dir)
     Put (Join-Path $dir $(if($kind -eq 'stage'){'handoff.ticket'}else{'plan'})) 'FORBIDDEN_TYPED_MARKER'
     if($kind -eq 'wholeintent'){Put (Join-Path $dir 'cancelled') 'synthetic'}
     if($kind -eq 'txn'){Put (Join-Path $dir 'rolled-back') 'synthetic';Put (Join-Path $dir 'commit-intent') 'synthetic'}
     if($kind -eq 'stage'){Put (Join-Path $dir 'helper.attempt') 'FORBIDDEN_ATTEMPT_BINDING';Put (Join-Path $dir 'helper.recovery') 'FORBIDDEN_RECOVERY_BINDING'}
 }
-Put (Join-Path $r.game 'bap-txn-not-a-native-name/plan') 'FORBIDDEN_NON_CONTRACT'
-Put (Join-Path $r.game ('BetterAstralParty.reinstall.completed-'+('d'*32))) 'FORBIDDEN_REINSTALL_GENERATION'
-Put (Join-Path $r.game ('BetterAstralParty.update.version.uninstalled-'+('e'*32))) 'FORBIDDEN_ARCHIVED_WATER'
-Put (Join-Path $r.game ('bap-transition-'+('f'*32))) 'FORBIDDEN_TRANSITION'
+Put (Join-Path $r.game 'bap-v3-txn-not-a-native-name/plan') 'FORBIDDEN_NON_CONTRACT'
+Put (Join-Path $r.game ('BetterAstralParty.reinstall-v3.completed-'+('d'*32))) 'FORBIDDEN_REINSTALL_GENERATION'
+Put (Join-Path $r.game ('BetterAstralParty.update-v3.version.uninstalled-'+('e'*32))) 'FORBIDDEN_ARCHIVED_WATER'
+Put (Join-Path $r.game ('bap-v3-transition-'+('f'*32))) 'FORBIDDEN_TRANSITION'
 $i=Inspect (Collect $r)
 Assert (@($i.recovery.observations | Where-Object {$_.code -eq 'work-marker-observed'}).Count -eq 6 -and @($i.recovery.observations | Where-Object {$_.code -eq 'work-marker-observed' -and $_.potentialBlocker -eq $false}).Count -eq 2) 'native work kind cancellation and rollback marker coverage'
 Assert (@($i.recovery.files | Where-Object {$_.source -match '/helper.(attempt|recovery)$' -and $_.present -eq $true -and $_.status -eq 'hashed'}).Count -eq 2 -and !$i.recoveryText.Contains('FORBIDDEN_')) 'actual helper attempt and recovery binding markers inventoried without raw contents'
 Assert (@($i.recovery.files | Where-Object {$_.source -match 'reinstall-completed|archived-version|game/transition/'}).Count -eq 3 -and !$i.recoveryText.Contains('not-a-native-name') -and !$i.recoveryText.Contains('FORBIDDEN')) 'generation history metadata masked and non-contract objects excluded'
 $r=Roots 'recovery-linked';$outside=Join-Path $Scratch 'recovery-outside';Put (Join-Path $outside 'plan') 'FORBIDDEN_LINK_TARGET'
-$linked=Join-Path $r.game ('bap-helperauto-'+('1'*32));$null=New-Item -ItemType Junction -Path $linked -Target $outside
+$linked=Join-Path $r.game ('bap-v3-helperauto-'+('1'*32));$null=New-Item -ItemType Junction -Path $linked -Target $outside
 $hard=Join-Path $r.game 'BetterAstralParty.install.json';$null=New-Item -ItemType HardLink -Path $hard -Target (Join-Path $outside 'plan')
-$locked=Join-Path $r.game 'BetterAstralParty.update.version';Put $locked 'FORBIDDEN_LOCKED_WATER';$held=[IO.File]::Open($locked,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+$locked=Join-Path $r.game 'BetterAstralParty.update-v3.version';Put $locked 'FORBIDDEN_LOCKED_WATER';$held=[IO.File]::Open($locked,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
 try{$i=Inspect (Collect $r)}finally{$held.Dispose()}
 Assert ((RecoveryFile $i 'game/BetterAstralParty.install.json').status -eq 'unsafe-or-denied' -and $null -eq (RecoveryFile $i 'game/BetterAstralParty.install.json').sha256) 'hard-linked recovery file refused without digest'
-Assert ((RecoveryFile $i 'game/BetterAstralParty.update.version').status -eq 'locked-or-unreadable' -and $null -eq (RecoveryFile $i 'game/BetterAstralParty.update.version').present) 'busy recovery file is unknown rather than absent'
+Assert ((RecoveryFile $i 'game/BetterAstralParty.update-v3.version').status -eq 'locked-or-unreadable' -and $null -eq (RecoveryFile $i 'game/BetterAstralParty.update-v3.version').present) 'busy recovery file is unknown rather than absent'
 Assert (@($i.recovery.roots | Where-Object {$_.source -match '^game/helperauto/' -and $_.status -eq 'unsafe-or-unreadable'}).Count -eq 1 -and !$i.recoveryText.Contains('FORBIDDEN')) 'linked work directory refused without traversing target'
 $r=Roots 'recovery-budgets'
-foreach($name in @('AstralParty-Vanilla.cmd','BetterAstralParty-Launcher.exe')){$p=Join-Path $r.game $name;$f=[IO.File]::Open($p,[IO.FileMode]::CreateNew);try{$f.SetLength(33554432)}finally{$f.Dispose()}}
+$gameBytes=(Get-Item -LiteralPath (Join-Path $r.game 'AstralParty_INT.exe')).Length
+foreach($name in @('AstralParty-Vanilla.cmd','BetterAstralParty-Launcher.exe')){$size=33554432;if($name -eq 'AstralParty-Vanilla.cmd'){$size-=$gameBytes};$p=Join-Path $r.game $name;$f=[IO.File]::Open($p,[IO.FileMode]::CreateNew);try{$f.SetLength($size)}finally{$f.Dispose()}}
 Put (Join-Path $r.game 'BetterAstralParty.install.json') 'small receipt'
 $i=Inspect (Collect $r)
 Assert ($i.recovery.hashReservedBytes -eq 67108864 -and (RecoveryFile $i 'game/BetterAstralParty.install.json').status -eq 'hash-budget-limit') 'recovery hashing has independent bounded total budget'
@@ -394,7 +395,7 @@ $p=Join-Path $r.game 'BetterAstralParty-Launcher.exe';$f=[IO.File]::Open($p,[IO.
 $i=Inspect (Collect $r)
 Assert ((RecoveryFile $i 'game/BetterAstralParty-Launcher.exe').status -eq 'file-size-limit' -and $null -eq (RecoveryFile $i 'game/BetterAstralParty-Launcher.exe').sha256) 'oversized owned file metadata retained without reading beyond file limit'
 $r=Roots 'recovery-directory-limit'
-for($n=0;$n -lt 65;$n++){$null=[IO.Directory]::CreateDirectory((Join-Path $r.game ('bap-wholeintent-'+$n.ToString('x32'))))}
+for($n=0;$n -lt 65;$n++){$null=[IO.Directory]::CreateDirectory((Join-Path $r.game ('bap-v3-wholeintent-'+$n.ToString('x32'))))}
 $i=Inspect (Collect $r);$limits=@($i.recovery.roots | Where-Object {$_.source -eq 'game/work-directories'})[0]
 Assert ($limits.matchedEntries -eq 65 -and $limits.limitOmitted -eq 1 -and @($i.recovery.observations | Where-Object {$_.code -eq 'work-marker-observed'}).Count -eq 64) 'recovery matching directories capped at 64'
 $r=Roots 'recovery-scan-limit';for($n=0;$n -lt 513;$n++){Put (Join-Path $r.game ('unrelated-'+$n)) 'private unused'}

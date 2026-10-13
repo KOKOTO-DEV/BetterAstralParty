@@ -14,12 +14,14 @@ namespace BetterAstralParty.Updating {
             using(operation) {
                 if(UpdateFaults.Read(fence)!=null) throw new ApplySafetyException(ApplyFailure.RecoveryRequired);
                 var entries=UpdateRecovery.Scan(fence);foreach(var entry in entries) if(entry.Pending) throw new ApplySafetyException(ApplyFailure.RecoveryRequired);
-                var result=new RetentionResult();var dirs=Directory.GetDirectories(fence.Root,"bap-stage-*",SearchOption.TopDirectoryOnly);
-                if(dirs.Length>4096) throw new ApplySafetyException(ApplyFailure.RecoveryRequired);
+                // Read-only classification is streamed; each deletion still requires the
+                // same ticket, terminal result, signature, package hash and native leases.
+                // Retained historical evidence is not itself a recovery fault.
+                var result=new RetentionResult();var dirs=Directory.EnumerateDirectories(fence.Root,"bap-v3-stage-*",SearchOption.TopDirectoryOnly);
                 foreach(var dir in dirs) {
                     var stage=Path.GetFileName(dir);bool used=false;foreach(var entry in entries) if(entry.Stage==stage) used=true;
                     if(used) {result.Preserved++;continue;}
-                    try { if(!Regex.IsMatch(stage,@"\Abap-stage-[0-9a-f]{32}\z")) throw new ApplySafetyException(ApplyFailure.UnsafePath);
+                    try { if(!Regex.IsMatch(stage,@"\Abap-v3-stage-[0-9a-f]{32}\z")) throw new ApplySafetyException(ApplyFailure.UnsafePath);
                         fence.AssertPrivateDirectory(stage);
                         using(var file=fence.OpenFile(stage+"/handoff.ticket")) {
                             var bytes=UpdateTicket.Read(file,2048);var ticket=UpdateTicket.Parse(bytes);ticket.Recheck(fence);if(ticket.Stage!=stage) throw new ApplySafetyException(ApplyFailure.InvalidState);

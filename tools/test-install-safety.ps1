@@ -18,11 +18,17 @@ public sealed class BapSafetyVerifier {
 public static class BapSafetyApi {
     public static Assembly Inspector;
     public static string GameRoot;
+    public static string EmptyGameRoot;
     public static bool FailCommit;
     public static readonly string HelperHash=new string('A',64);
     public static IDisposable BeginInstallerDiagnostics(string game,string version) { return new System.IO.MemoryStream(); }
     public static void RecordInstallerStage(string phase,string outcome) { }
     public static void RecordInstallerFailure(string phase,Exception error) { }
+    public static void ValidateMaintenancePaths(string game,string backups) {
+        if(game!=GameRoot && game!=EmptyGameRoot)throw new Exception("External fixture path-planning root");
+        Inspector.GetType("SteamLauncher").GetMethod("ValidateMaintenancePaths",BindingFlags.Public|BindingFlags.Static)
+            .Invoke(null,new object[]{game,backups});
+    }
     public static string CheckOwnedHelper(string game) { if(game!=GameRoot)throw new Exception("External fixture root");return HelperHash+":inert"; }
     public static void RestoreOrdinaryInstall(string game,string backups,string journal,string[] targets,string current,bool complete,string root) {
         if(game!=GameRoot)throw new Exception("External fixture recovery root");
@@ -40,9 +46,9 @@ $passed=$false
 $tokens=$null; $parseErrors=$null
 $shortcutAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'steam-shortcut.ps1'),[ref]$tokens,[ref]$parseErrors)
 if ($parseErrors.Count) { throw 'Shared Steam guard fixture parse failed.' }
-$guardNames=@('Get-BapSteamStatus','New-BapSteamFailure','Assert-BapSteamStopped')
+$guardNames=@('Get-BapProcessObservation','Get-BapProcessFact','Get-BapSteamStatus','New-BapSteamFailure','Assert-BapSteamStopped')
 $guardDefinitions=@($shortcutAst.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -in $guardNames},$false))
-if ($guardDefinitions.Count -ne 3) { throw 'Shared Steam guard fixture closure changed.' }
+if ($guardDefinitions.Count -ne $guardNames.Count) { throw 'Shared Steam guard fixture closure changed.' }
 $fixtureGuardSource=($guardDefinitions | ForEach-Object { $_.Extent.Text }) -join "`r`n"
 function Write-Fixture([string]$Path, [string]$Text) {
     $null = [IO.Directory]::CreateDirectory((Split-Path -Parent $Path))
@@ -57,6 +63,33 @@ try {
     $package = Join-Path $scratch 'package'
     $game = Join-Path $scratch 'game'
     $fixtureSteam = Join-Path $scratch 'Steam'
+    # Public installer entrypoints reject unsupported flags before any body/IO, not a fake dry run.
+    foreach ($entry in @('install.ps1','install-bootstrap.ps1')) {
+        $tokens=$null; $errors=$null
+        $entryAst=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot $entry),[ref]$tokens,[ref]$errors)
+        if ($errors.Count -or !$entryAst.ParamBlock) { throw 'Installer parameter fixture parse failed.' }
+        $binding=[scriptblock]::Create((@($entryAst.ParamBlock.Attributes|ForEach-Object {$_.Extent.Text}) -join [Environment]::NewLine)+[Environment]::NewLine+$entryAst.ParamBlock.Extent.Text+@'
+
+$script:FixtureParameterBodyEntered=$true
+[pscustomobject]@{GameRoot=$GameRoot;RestartSteam=[bool]$RestartSteam;AccountId=$AccountId;UpdateOnly=[bool]$UpdateOnly;RecoveryPlan=$RecoveryPlan}
+'@)
+        foreach ($flag in @('WhatIf','CheckOnly','UnexpectedFixtureArgument')) {
+            $script:FixtureParameterBodyEntered=$false; $refused=$false
+            $arguments=@{GameRoot=$game}; $arguments[$flag]=$true
+            try { $null=& $binding @arguments }
+            catch [Management.Automation.ParameterBindingException] { $refused=$true }
+            if (!$refused -or $script:FixtureParameterBodyEntered) { throw ("Unsupported $flag entered $entry body.") }
+        }
+        $valid=& $binding -GameRoot $game -RestartSteam -AccountId 7 -UpdateOnly -RecoveryPlan 'inert review' -ErrorAction Stop
+        if ($valid.GameRoot -cne $game -or !$valid.RestartSteam -or $valid.AccountId -ne 7 -or !$valid.UpdateOnly -or $valid.RecoveryPlan -cne 'inert review') {
+            throw 'Existing installer parameter binding changed.'
+        }
+        $script:FixtureParameterBodyEntered=$false; $refused=$false
+        try { $null=& $binding -GameRoot $game -RestartSteam -AccountId 7 -UpdateOnly -RecoveryPlan 'inert review' 'unexpected-extra-position' }
+        catch [Management.Automation.ParameterBindingException] { $refused=$true }
+        if (!$refused -or $script:FixtureParameterBodyEntered) { throw ('Extra positional argument entered '+$entry+' body.') }
+    }
+    Write-Host 'PASS: exact installer/ bootstrap ParamBlocks reject unsupported WhatIf/CheckOnly/unknown/extra arguments before body entry; all five existing parameters and ErrorAction still bind.'
     $null = [IO.Directory]::CreateDirectory((Join-Path $fixtureSteam 'userdata/1/config'))
     Write-Fixture (Join-Path $game 'AstralParty_INT.exe') 'not an executable'
     Write-Fixture (Join-Path $game 'BepInEx/config/kr.betterastralparty.mod.cfg') 'user setting'
@@ -206,6 +239,7 @@ function Stop-BapVerifiedProcess { $steamProbe.Stops++; $steamProbe.Running=$fal
         if ($Name -contains 'steam') { throw 'Unexpected Steam process query' }
     }
     $emptyGame = Join-Path $scratch 'not-installed'
+    [BapSafetyApi]::EmptyGameRoot=$emptyGame
     Write-Fixture (Join-Path $emptyGame 'AstralParty_INT.exe') 'not an executable'
     try { & (Join-Path $package 'tools/install.ps1') -GameRoot $emptyGame -UpdateOnly; throw 'Expected missing installation rejection' }
     catch { if ($_.Exception.Message -notlike '*requires an existing installation*') { throw } }
@@ -251,12 +285,25 @@ function Stop-BapVerifiedProcess { $steamProbe.Stops++; $steamProbe.Running=$fal
         $inventory = @{version='0.15.0'; kind='whole'; files=@($files | ForEach-Object { @{path=$_.FullName.Substring($package.Length+1).Replace('\','/'); sha256=(Get-FileHash -LiteralPath $_.FullName).Hash} })}
         Write-Fixture (Join-Path $package 'package-manifest.json') ($inventory | ConvertTo-Json -Depth 5)
     }
-    function Invoke-Bootstrap([int]$Expected, [string]$Contains) {
-        $result = & "$env:WINDIR/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -ExecutionPolicy Bypass -File (Join-Path $package 'tools/install-bootstrap.ps1') 2>&1 | Out-String
-        if ($LASTEXITCODE -ne $Expected -or !$result.Contains($Contains)) { throw "Bootstrap failed expectation: $result" }
+    function Invoke-Bootstrap([int]$Expected, [string]$Contains, [string[]]$Extra = @()) {
+        $info=[Diagnostics.ProcessStartInfo]::new("$env:WINDIR/System32/WindowsPowerShell/v1.0/powershell.exe")
+        $info.UseShellExecute=$false; $info.CreateNoWindow=$true
+        $info.RedirectStandardOutput=$true; $info.RedirectStandardError=$true
+        $info.Arguments='-NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $package 'tools/install-bootstrap.ps1')+'" '+($Extra -join ' ')
+        $process=[Diagnostics.Process]::new(); $process.StartInfo=$info
+        try {
+            if(!$process.Start()){throw 'Inert bootstrap did not start'}
+            $stdout=$process.StandardOutput.ReadToEndAsync(); $stderr=$process.StandardError.ReadToEndAsync()
+            if(!$process.WaitForExit(20000)){$process.Kill();throw 'Inert bootstrap timeout'}
+            $result=$stdout.GetAwaiter().GetResult()+$stderr.GetAwaiter().GetResult()
+            if ($process.ExitCode -ne $Expected -or !$result.Contains($Contains)) { throw "Bootstrap failed expectation: $result" }
+        } finally {$process.Dispose()}
     }
     Save-FixtureManifest
     Invoke-Bootstrap 0 'fixture installer reached'
+    foreach ($flag in @('-WhatIf','-CheckOnly','-UnexpectedFixtureArgument')) {
+        Invoke-Bootstrap 1 'NamedParameterNotFound' @($flag)
+    }
     Write-Fixture (Join-Path $package 'artifacts/BetterAstralParty.dll') 'damaged'
     Invoke-Bootstrap 1 'Missing or damaged package file'
     Write-Fixture (Join-Path $package 'tools/install.ps1') 'if ('

@@ -1,4 +1,6 @@
 using UnityEngine;
+using BetterAstralParty.Updating;
+using BetterAstralParty.Observability;
 
 namespace BetterAstralParty;
 
@@ -18,7 +20,72 @@ internal static class UpdateNotificationUi
     private static int _contextGeneration;
     private static int _languageRevision = -1, _fontRevision = -1, _automaticRevision = -1, _releaseRevision = -1;
     private static float _openedAt;
+    private sealed record Transition(ReleaseUpdate Release, ChannelTransitionProposal Proposal, ChannelTransitionReview Review, DiagnosticOperation Operation);
+    private sealed record PendingTransition(Task<Transition> Task, CancellationTokenSource Cancellation, ReleaseUpdate Release, DiagnosticOperation Operation);
+    private static PendingTransition? _pendingTransition;
+    private static Transition? _transition;
+    private static ReleaseUpdate? _failedTransition;
     internal static bool ConsumedInput => _consumedFrame == Time.frameCount;
+    internal static bool CanConfirmTransition => _pendingTransition == null && _transition == null && Plugin.Automatic.CanReviewTransition
+        && Plugin.Updates.Result.Release is { } release && Plugin.Updates.CurrentRelease(release) && release.ProposalRequest(Plugin.Automatic.Snapshot.InstalledVersion) != null;
+
+    internal static void BeginTransition()
+    {
+        if (!CanConfirmTransition) {
+            DiagnosticHub.Stage(DiagnosticFeature.Settings, DiagnosticPhase.UiAction, DiagnosticOutcome.Unavailable,
+                DiagnosticOperation.New(), Plugin.Updates.Result.Release?.Version, DiagnosticCode.Prerequisite);
+            DiagnosticHub.FlushSoon(); return;
+        }
+        var release = Plugin.Updates.Result.Release!;
+        var request = release.ProposalRequest(Plugin.Automatic.Snapshot.InstalledVersion)!;
+        Clear();
+        var operation = DiagnosticOperation.New();
+        var cancellation = new CancellationTokenSource();
+        var token = cancellation.Token;
+        try {
+            var proposal = Plugin.Automatic.ProposeTransition(request, DateTimeOffset.UtcNow, cancellation.Token);
+            var root = Path.GetDirectoryName(BepInEx.Paths.BepInExRootPath)!;
+            var task = Task.Run(async () => {
+                var verified = await proposal.ConfigureAwait(false); token.ThrowIfCancellationRequested();
+                using var fence = new WindowsFileFence(root);
+                return new Transition(release, verified, ChannelTransitionIntent.Review(fence, verified.Descriptor), operation);
+            }, token);
+            _pendingTransition = new(task, cancellation, release, operation);
+            DiagnosticHub.Stage(DiagnosticFeature.Settings, DiagnosticPhase.UiAction, DiagnosticOutcome.Begin, operation, release.Version);
+        } catch (Exception error) {
+            cancellation.Dispose(); TransitionFailure(error, operation, release);
+        }
+    }
+
+    private static bool CurrentTransition(Transition transition) => Plugin.Updates.CurrentRelease(transition.Release)
+        && Plugin.Automatic.CurrentTransitionProposal(transition.Proposal)
+        && transition.Review.Target.DescriptorSha256 == transition.Proposal.Descriptor.DescriptorSha256;
+    private static void TransitionFailure(Exception error, DiagnosticOperation operation, ReleaseUpdate release)
+    {
+        var safety = error as ApplySafetyException; var validation = error as UpdateValidationException;
+        var code = validation?.Failure == UpdateFailure.InvalidSignature ? DiagnosticCode.InvalidSignature
+            : validation?.Failure == UpdateFailure.WrongTarget ? DiagnosticCode.WrongTarget
+            : validation != null ? DiagnosticCode.Integrity : DiagnosticCode.Prerequisite;
+        _failedTransition = release;
+        DiagnosticHub.Failure(DiagnosticFeature.Settings, DiagnosticPhase.UiAction, code, error,
+            safety?.NativeError ?? 0, validation != null ? (int)validation.Failure : 0, operation, safety != null ? (int)safety.Failure : 0, release.Version);
+        DiagnosticHub.FlushSoon();
+    }
+    private static void PollTransition()
+    {
+        var pending = _pendingTransition;
+        if (pending == null) return;
+        if (!Plugin.Updates.CurrentRelease(pending.Release)) {
+            Clear(false); TransitionFailure(new InvalidOperationException("Channel transition target changed during review"), pending.Operation, pending.Release); return;
+        }
+        if (!pending.Task.IsCompleted) return;
+        _pendingTransition = null; pending.Cancellation.Dispose();
+        try {
+            var transition = pending.Task.GetAwaiter().GetResult();
+            if (!CurrentTransition(transition)) throw new InvalidOperationException("Channel transition review became stale");
+            _transition = transition;
+        } catch (Exception error) { TransitionFailure(error, pending.Operation, pending.Release); }
+    }
 
     internal static void Observe() => State.Observe(Plugin.Updates.Result, Plugin.Updates.Channel, Plugin.Updates.Generation);
 
@@ -31,24 +98,32 @@ internal static class UpdateNotificationUi
 
     private static void TickCore()
     {
+        PollTransition();
         var home = GameUi.NotificationHome();
         if (!home.Eligible) { Clear(); return; }
+        if (_pendingTransition != null) return; // Ordinary notices must not replace an in-flight explicit review.
         var root = GameUi.Root!;
         if (_panel != null && (_panel.Get<bool>("isDisposed") || _parent != root.Pointer
-            || _contextGeneration != State.ContextGeneration
-            || _target == null || State.Active?.Key != _target.Key && State.Next?.Key != _target.Key))
+            || _transition == null && _failedTransition == null && (_contextGeneration != State.ContextGeneration
+            || _target == null || State.Active?.Key != _target.Key && State.Next?.Key != _target.Key)))
             Clear();
+        if (_transition != null && !CurrentTransition(_transition)) {
+            var stale = _transition;
+            Clear(false); TransitionFailure(new InvalidOperationException("Channel transition review became stale"), stale.Operation, stale.Release);
+        }
         if (_panel == null)
         {
             // Never take the click/key which just opened or left another native screen.
             if (!Application.isFocused || UnityEngine.Input.GetMouseButtonDown(0)
                 || UnityEngine.Input.GetMouseButtonUp(0) || UnityEngine.Input.anyKeyDown) return;
-            if (State.Next is not { } target) return;
+            if (_transition == null && _failedTransition == null && State.Next == null) return;
+            var target = _transition != null ? new UpdateNotificationTarget(_transition.Release, "transition")
+                : _failedTransition != null ? new UpdateNotificationTarget(_failedTransition, "transition-failed") : State.Next!;
             Create(root, target);
         }
         Layout(root);
         if (_target == null) return;
-        if (State.Active == null && GameUi.Visible(_panel) && _panel!.Get<float>("alpha") > 0)
+        if (_transition == null && _failedTransition == null && State.Active == null && GameUi.Visible(_panel) && _panel!.Get<float>("alpha") > 0)
             State.Shown(_target.Key);
         if (_languageRevision != ModText.Revision || _fontRevision != ModFont.Revision || _automaticRevision != Plugin.Automatic.Revision
             || _releaseRevision != Plugin.Updates.Revision) Refresh();
@@ -117,7 +192,7 @@ internal static class UpdateNotificationUi
         _scrollTrack.Call("SetXY", 958f, 110f);
         _scrollMarker = null;
         AddButton(UpdateNoticeAction.Close, "Button_ReturnRounded", 168);
-        AddButton(UpdateNoticeAction.Settings, "Button_ConfirmRounded", 610);
+        AddButton(_transition != null ? UpdateNoticeAction.ConfirmTransition : UpdateNoticeAction.Settings, "Button_ConfirmRounded", 610);
         _languageRevision = _fontRevision = _automaticRevision = _releaseRevision = -1;
         Refresh();
         scroll.Call("ScrollTop", false);
@@ -140,16 +215,19 @@ internal static class UpdateNotificationUi
         _languageRevision = ModText.Revision;
         _automaticRevision = Plugin.Automatic.Revision;
         _releaseRevision = Plugin.Updates.Revision;
-        _frame!.Call("GetChild", "title")!.Set("text", ModText.Text("새 업데이트"));
-        _body!.Set("text", ModText.UpdateNotificationDetails(_target!.Release, Plugin.Version,
-            Plugin.Automatic.Status, Plugin.Updates.Result.Status, Plugin.Automatic.Snapshot.Matches(_target.Release)));
+        _frame!.Call("GetChild", "title")!.Set("text", _transition != null || _failedTransition != null ? ModText.ChannelTransitionTitle : ModText.Text("새 업데이트"));
+        var review = _transition?.Review;
+        _body!.Set("text", _failedTransition != null ? ModText.ChannelTransitionUnavailable
+            : review != null ? ModText.ChannelTransitionDetails(review.SourceChannel, review.CurrentVersion, review.Target.Channel, review.Target.Version, review.Target.Repository)
+            : ModText.UpdateNotificationDetails(_target!.Release, Plugin.Version,
+                Plugin.Automatic.Status, Plugin.Updates.Result.Status, Plugin.Automatic.Snapshot.Matches(_target.Release)));
         ModFont.Track(_body);
         _content!.Call("SetSize", _body.Get<float>("width"), Math.Max(300f, _body.Get<float>("textHeight")));
         _view!.Call("EnsureBoundsCorrect");
         foreach (var (button, action) in Controls.Values)
         {
             if (button.Pointer == _frame.Call("GetChild", "closeButton")!.Pointer) continue;
-            NativeUi.StyleTitle(button, ModText.Text(action == UpdateNoticeAction.Settings ? "업데이트 설정" : "닫기"));
+            NativeUi.StyleTitle(button, action == UpdateNoticeAction.ConfirmTransition ? ModText.ChannelTransitionConfirm : ModText.Text(action == UpdateNoticeAction.Settings ? "업데이트 설정" : "닫기"));
         }
         _fontRevision = ModFont.Revision;
     }
@@ -200,14 +278,40 @@ internal static class UpdateNotificationUi
             UnityEngine.Input.GetKeyDown(KeyCode.F8), pointer);
         if (dispatched == UpdateNoticeAction.None) return;
         _consumedFrame = Time.frameCount;
+        if (dispatched == UpdateNoticeAction.ConfirmTransition && _transition is { } transition) {
+            try {
+                if (!CurrentTransition(transition)) throw new InvalidOperationException("Channel transition review became stale");
+                var intent = ChannelTransitionIntent.Approve(transition.Review);
+                var request = transition.Release.DownloadRequest(transition.Review.CurrentVersion, Plugin.Updates.Channel, intent);
+                if (request == null || !Plugin.Automatic.ConfirmTransition(request, transition.Release.Generation, DateTimeOffset.UtcNow, true))
+                    throw new InvalidOperationException("Channel transition could not be started");
+                DiagnosticHub.Stage(DiagnosticFeature.Settings, DiagnosticPhase.UiAction, DiagnosticOutcome.Completed, transition.Operation, transition.Release.Version);
+                DiagnosticHub.FlushSoon();
+                Clear(false);
+            } catch (Exception error) { Clear(false); TransitionFailure(error, transition.Operation, transition.Release); }
+            return;
+        }
         Clear();
         if (dispatched == UpdateNoticeAction.Settings) ModUi.OpenUpdateSettings();
     }
 
     internal static void CloseForSettings() { _consumedFrame = Time.frameCount; Clear(); }
 
-    internal static void Clear()
+    internal static void Clear() => Clear(true);
+    private static void Clear(bool cancelled)
     {
+        var pending = _pendingTransition; var transition = _transition;
+        _pendingTransition = null; _transition = null; _failedTransition = null;
+        if (pending != null) {
+            try { pending.Cancellation.Cancel(); } catch { }
+            pending.Cancellation.Dispose();
+            _ = pending.Task.ContinueWith(task => { _ = task.Exception; }, TaskScheduler.Default);
+        }
+        if (cancelled && (pending != null || transition != null)) {
+            DiagnosticHub.Stage(DiagnosticFeature.Settings, DiagnosticPhase.UiAction, DiagnosticOutcome.Cancelled,
+                pending?.Operation ?? transition!.Operation, pending?.Release.Version ?? transition!.Release.Version);
+            DiagnosticHub.FlushSoon();
+        }
         State.Close(); InputState.Reset();
         var panel = _panel;
         _frame = _view = _content = _body = _scrollTrack = _scrollThumb = null; _target = null;

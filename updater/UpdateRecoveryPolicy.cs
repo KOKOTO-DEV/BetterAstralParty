@@ -26,12 +26,12 @@ namespace BetterAstralParty.Updating
             if (rolled) foreach (var state in states) if (state != 0) throw Bad();
             return RecoveryDirection.RestoreOriginal;
         }
-        internal static RecoveryEntry? Select(List<RecoveryEntry> entries, string descriptor, string? work, bool legacy)
+        internal static RecoveryEntry? Select(List<RecoveryEntry> entries, string descriptor, string? work)
         {
             RecoveryEntry? selected = null;
-            if (work != null && !Regex.IsMatch(work, @"\Abap-txn-[0-9a-f]{32}\z")) throw Bad();
+            if (work != null && !Regex.IsMatch(work, @"\Abap-v3-txn-[0-9a-f]{32}\z")) throw Bad();
             foreach (var entry in entries) {
-                if (work != null && entry.Work == work || work == null && legacy && entry.Pending && entry.Descriptor == descriptor) {
+                if (work != null && entry.Work == work) {
                     if (selected != null || entry.Descriptor != descriptor) throw Bad(); selected = entry;
                 }
             }
@@ -62,7 +62,7 @@ namespace BetterAstralParty.Updating
         }
         internal static byte[] Attempt(string ticketHash, string work)
         {
-            if (!Regex.IsMatch(ticketHash, @"\A[0-9A-F]{64}\z") || !Regex.IsMatch(work, @"\Abap-txn-[0-9a-f]{32}\z")) throw Bad();
+            if (!Regex.IsMatch(ticketHash, @"\A[0-9A-F]{64}\z") || !Regex.IsMatch(work, @"\Abap-v3-txn-[0-9a-f]{32}\z")) throw Bad();
             return Encoding.ASCII.GetBytes("BetterAstralParty.HelperAttempt/v1\nticket=" + ticketHash + "\nwork=" + work + "\n");
         }
         internal static string ParseAttempt(byte[] bytes, string ticketHash)
@@ -79,7 +79,7 @@ namespace BetterAstralParty.Updating
         internal static void RequireNoUntrackedWork(WindowsFileFence fence, string? work)
         {
             if (work == null) return;
-            if (!Regex.IsMatch(work, @"\Abap-txn-[0-9a-f]{32}\z")) throw Bad();
+            if (!Regex.IsMatch(work, @"\Abap-v3-txn-[0-9a-f]{32}\z")) throw Bad();
             try { fence.DirectoryIdentity(work); }
             catch (ApplySafetyException error) when (error.NativeError == 2) { return; }
             // A missing journal in an existing attempt directory is uncertain. Retain
@@ -90,7 +90,7 @@ namespace BetterAstralParty.Updating
         {
             if (!Enum.IsDefined(typeof(RecoveryOutcome), outcome)) throw Bad();
             var attempt = work == null ? "-" : work;
-            if (!Regex.IsMatch(ticketHash, @"\A[0-9A-F]{64}\z") || work != null && !Regex.IsMatch(work, @"\Abap-txn-[0-9a-f]{32}\z") || work == null && outcome != RecoveryOutcome.NoChanges) throw Bad();
+            if (!Regex.IsMatch(ticketHash, @"\A[0-9A-F]{64}\z") || work != null && !Regex.IsMatch(work, @"\Abap-v3-txn-[0-9a-f]{32}\z") || work == null && outcome != RecoveryOutcome.NoChanges) throw Bad();
             return Encoding.ASCII.GetBytes("BetterAstralParty.HelperRecovery/v1\nticket=" + ticketHash + "\nwork=" + attempt + "\noutcome=" + outcome + "\n");
         }
         internal static RecoveryOutcome ParseResolution(byte[] bytes, string ticketHash, string? work)

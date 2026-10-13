@@ -17,6 +17,7 @@ internal static class UpdateDiscoveryBridge
 
     internal static void Apply(ReleaseUpdates discovery, AutomaticUpdates automatic, string current)
     {
+        discovery.InstalledChannel(automatic.Snapshot.InstalledChannel);
         var result = discovery.Result;
         var release = result.Status == ReleaseUpdateStatus.Available
             && result.Release is { TransitionCandidate: false } found

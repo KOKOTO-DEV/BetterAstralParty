@@ -48,7 +48,7 @@ function Get-BapInstallVersion([string]$Text) {
         if (![int]::TryParse($component, [ref]$value)) { throw '설치 버전 숫자가 범위를 넘었습니다. / Installation version number exceeds the supported range.' }
         $parts += $value
     }
-    $pre = if ($Matches[4]) { @($Matches[4].Split('.')) } else { @() }
+    $pre = @(if ($Matches[4]) { $Matches[4].Split('.') })
     foreach ($p in $pre) { if ($p -match '^[0-9]+$' -and $p.Length -gt 1 -and $p[0] -eq '0') { throw '잘못된 설치 버전입니다. / Invalid prerelease version.' } }
     return @{ Core=$parts; Pre=$pre; Text=$Text }
 }
@@ -76,9 +76,11 @@ function Read-BapInstallMetadata([byte[]]$Bytes, [switch]$Launcher) {
         $protocol=@($type[0].Fields | Where-Object { $_.Name -ceq 'InstallBundleProtocol' -and $_.IsLiteral })
         $value=if($protocol.Count -eq 1){$protocol[0].Constant}else{0}
         if ($Launcher) {
-            foreach($api in @('GuardModLaunch','CheckUpdateState','ReadInstallerState')) {
+            $launch=@($type[0].Methods|Where-Object {$_.Name -ceq 'GuardModLaunchVerified' -and $_.IsPublic -and $_.IsStatic -and $_.Parameters.Count -eq 2 -and $_.ReturnType.FullName -ceq 'System.IDisposable' -and @($_.Parameters|Where-Object {$_.ParameterType.FullName -cne 'System.String'}).Count -eq 0})
+            if($launch.Count -ne 1){throw '런처 안전 API가 없는 구형 구성품입니다. 최신 설치 묶음을 사용하세요. / Required launcher safety API is missing.'}
+            foreach($api in @('CheckUpdateState','ReadInstallerState')) {
                 $m=@($type[0].Methods|Where-Object {$_.Name -ceq $api -and $_.IsPublic -and $_.IsStatic -and $_.Parameters.Count -eq 1 -and $_.Parameters[0].ParameterType.FullName -ceq 'System.String'})
-                $returns=if($api -eq 'GuardModLaunch'){'System.IDisposable'}elseif($api -eq 'ReadInstallerState'){'System.String'}else{'System.Void'}
+                $returns=if($api -eq 'ReadInstallerState'){'System.String'}else{'System.Void'}
                 if($m.Count -ne 1 -or $m[0].ReturnType.FullName -cne $returns){throw '런처 안전 API가 없는 구형 구성품입니다. 최신 설치 묶음을 사용하세요. / Required launcher safety API is missing.'}
             }
             $maintenance=@($type[0].Methods|Where-Object {$_.Name -ceq 'GuardMaintenance' -and $_.IsPublic -and $_.IsStatic -and $_.Parameters.Count -eq 1 -and $_.Parameters[0].ParameterType.FullName -ceq 'System.String' -and $_.ReturnType.FullName -ceq 'System.IDisposable'})
@@ -105,20 +107,63 @@ function Read-BapInstallMetadata([byte[]]$Bytes, [switch]$Launcher) {
         if($updateFields.Count -gt 1 -or $settingsFields.Count -gt 1){throw 'Ambiguous update metadata.'}
         $updateValue=if($updateFields.Count -eq 1){$updateFields[0].Constant}else{''}
         $settingsValue=if($settingsFields.Count -eq 1){$settingsFields[0].Constant}else{''}
-        if($updateValue -cnotin @('','1','2') -or $settingsValue -cnotin @('','1')){throw 'Unsupported update/settings metadata.'}
+        if($updateValue -cne '3' -or $settingsValue -cne '1'){throw '새 1.2.1 설치 기준판만 지원합니다. 이전 패키지로 제거한 후 다시 설치하세요. / New 1.2.1 baseline required; remove the previous installation with its own package.'}
         return @{Protocol=$value;Version=$version[0].Constant;UpdateProtocol=$updateValue;SettingsSchema=$settingsValue}
     } finally { if($assembly){$assembly.Dispose()}; $memory.Dispose() }
 }
 function Assert-BapWholeUpdateProtocol($Plugin, $Launcher=$null) {
-    if ($Plugin.UpdateProtocol -ceq '2' -and (!$Launcher -or !$Launcher.WholeBridgeApi -or $Plugin.SettingsSchema -cne '1')) {
+    if ($Plugin.UpdateProtocol -ceq '3' -and (!$Launcher -or !$Launcher.WholeBridgeApi -or $Plugin.SettingsSchema -cne '1')) {
         throw 'Verified whole channel-migration APIs and settings contract required; existing files preserved.'
     }
+}
+function Assert-BapMaintenancePath([string]$Path, [string]$Purpose) {
+    $full = [IO.Path]::GetFullPath($Path)
+    if ($full.Length -le 240) { return }
+    $error = [IO.PathTooLongException]::new(('BAP-PATH-PREFLIGHT: MaintenancePathTooLong; kind=' + $Purpose + '; length=' + $full.Length + '; limit=240. 경로를 짧게 지정한 뒤 다시 실행하세요. 파일·백업은 변경하지 않았습니다. / Select a shorter path and retry; files and backups were not changed. Path: ' + $full))
+    $error.Data['BapInstallStage'] = 'Maintenance path planning'
+    $error.Data['BapRecoveryReason'] = 'MaintenancePathTooLong'
+    throw $error
+}
+function Assert-BapMaintenancePathPlan($Bundle, [string[]]$Targets, [switch]$IncludeLoader) {
+    $journal = Get-InstallJournalPath $Bundle.GameRoot
+    $journalRoot = Split-Path -Parent $journal
+    $backup = Join-Path $journalRoot ('0' * 32)
+    foreach ($path in @($Bundle.GameRoot, $Bundle.PackageRoot)) { Assert-BapMaintenancePath $path 'Root' }
+    foreach ($path in @($journal, ($journal + '.lock'), (Join-Path $backup 'pending.json'), (Join-Path $backup 'completed.json'), (Join-Path $backup 'restored.json'))) {
+        Assert-BapMaintenancePath $path 'BackupJournal'
+    }
+    if (!$Targets -or !$Targets.Count) {
+        $Targets = @($Bundle.Expected.Keys | ForEach-Object { Join-Path $Bundle.GameRoot $_ }) + @(
+            (Join-Path $Bundle.GameRoot 'BepInEx/config/BepInEx.cfg'),
+            (Join-Path $Bundle.GameRoot 'BetterAstralParty.install.json'),
+            (Join-Path $Bundle.GameRoot 'BetterAstralParty-UpdateHelper.exe'),
+            (Join-Path $Bundle.GameRoot 'BetterAstralParty.helper.receipt'))
+    }
+    if ($IncludeLoader -and !(Test-Path -LiteralPath (Join-Path $Bundle.GameRoot 'doorstop_config.ini'))) {
+        $prefix = '.deps/bepinex/'
+        $Targets += @($Bundle.SourceHashes.Keys | Where-Object { $_.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) } |
+            ForEach-Object { Join-Path $Bundle.GameRoot $_.Substring($prefix.Length) })
+    }
+    $index = 0
+    foreach ($target in @($Targets | Sort-Object -Unique)) {
+        Assert-BapMaintenancePath $target 'Target'
+        Assert-BapMaintenancePath (Join-Path $backup (($index++).ToString() + '.bin')) 'BackupFile'
+        $parent = Split-Path -Parent $target
+        while (!(Test-Path -LiteralPath $parent -PathType Container)) { $parent = Split-Path -Parent $parent }
+        Assert-BapMaintenancePath (Join-Path $parent (('0' * 32) + '.bap-write-test')) 'WriteProbe'
+    }
+    # Native owners plan their own future work names without creating directories or locks.
+    $api = (Get-BapInstallVerifier $Bundle).GetType('SteamLauncher').GetMethod('ValidateMaintenancePaths', [Reflection.BindingFlags]'Public,Static')
+    if (!$api) { throw '경로계획 검사기가 필요합니다. 최신 전체 설치 묶음을 사용하세요. / Current complete package with maintenance path planning is required.' }
+    $null = $api.Invoke($null, [object[]]@([string]$Bundle.GameRoot, [string]$journalRoot))
 }
 function Open-BapInstallBundle([string]$PackageRoot,[string]$GameRoot,[string]$RecoveryPlan) {
     $leases=[Collections.Generic.List[IDisposable]]::new()
     try {
         $package=[IO.Path]::GetFullPath($PackageRoot).TrimEnd('\')
         $game=[IO.Path]::GetFullPath($GameRoot).TrimEnd('\')
+        Assert-BapMaintenancePath $package 'PackageRoot'
+        Assert-BapMaintenancePath $game 'GameRoot'
         if($package -eq $game -or $package.StartsWith($game+'\',[StringComparison]::OrdinalIgnoreCase) -or $game.StartsWith($package+'\',[StringComparison]::OrdinalIgnoreCase)){throw '설치 입력과 게임 폴더는 분리되어야 합니다. / Package and game directories must be separate.'}
         $manifestPath=Join-Path $package 'package-manifest.json'
         if(!(Test-Path -LiteralPath $manifestPath -PathType Leaf)){throw '검증된 설치 묶음이 없습니다. 소스 폴더나 예전 install.cmd 대신 최신 전체 설치 묶음을 사용하세요. / Verified installation manifest required.'}
@@ -128,6 +173,7 @@ function Open-BapInstallBundle([string]$PackageRoot,[string]$GameRoot,[string]$R
         $manifest=Read-BapInstallJson $manifestBytes
         if(($manifest.schema -isnot [int] -and $manifest.schema -isnot [long]) -or $manifest.schema -ne 1 -or $manifest.version -isnot [string] -or $manifest.kind -isnot [string] -or !$manifest.kind -or $manifest.files -isnot [array] -or @($manifest.files).Count -lt 10){throw '설치 manifest 형식이 잘못되었습니다. / Invalid installation manifest.'}
         $version=Get-BapInstallVersion $manifest.version
+        if((Compare-BapInstallVersion $version (Get-BapInstallVersion '1.2.1-0')) -lt 0){throw '새 1.2.1 설치 기준판 이상만 지원합니다. / Installation packages require the new 1.2.1 baseline or later.'}
         $hashes=[Collections.Generic.Dictionary[string,string]]::new([StringComparer]::OrdinalIgnoreCase)
         foreach($f in $manifest.files){
             if($f.path -isnot [string] -or !$f.path -or $f.sha256 -isnot [string] -or $f.sha256 -cnotmatch '\A[A-F0-9]{64}\z' -or [IO.Path]::IsPathRooted($f.path) -or $f.path -match '(^|[\\/])\.\.([\\/]|$)|:' -or $hashes.ContainsKey($f.path)){throw '설치 파일 목록이 잘못되었습니다. / Unsafe or duplicate installation inventory.'}
@@ -135,7 +181,7 @@ function Open-BapInstallBundle([string]$PackageRoot,[string]$GameRoot,[string]$R
             foreach($part in $f.path.Split('/')){
                 if(!$part -or $part -ne $part.Trim() -or $part.EndsWith('.') -or $part -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)'){throw '설치 경로 별칭은 허용하지 않습니다. / Installation path alias rejected.'}
             }
-            $path=Join-Path $package $f.path;Assert-InstallTarget $package $path
+            $path=Join-Path $package $f.path;Assert-BapMaintenancePath $path 'PackageFile';Assert-InstallTarget $package $path
             try { $s=[IO.File]::Open($path,'Open','Read','Read') }
             catch {
                 $cause=$_.Exception.GetBaseException()
@@ -174,7 +220,7 @@ function Open-BapInstallBundle([string]$PackageRoot,[string]$GameRoot,[string]$R
         Assert-BapWholeUpdateProtocol $plugin $launcher
         if (!$launcher.OrdinaryRecoveryApi) { throw '안전한 핸들 기반 복구 검사기가 필요합니다. 이전 검사기로 이 번들을 설치할 수 없습니다. / Held-handle ordinary recovery inspector required; old verifier cannot authorize this bundle.' }
         if ($hashes.ContainsKey('tools/install-reinstall.ps1') -and !$launcher.RemovedHelperEvidenceApi) { throw '공통 재설치를 지원하는 검사기가 필요합니다. / Version-neutral reinstall inspector required.' }
-        if ($plugin.UpdateProtocol -ceq '2') {
+        if ($plugin.UpdateProtocol -ceq '3') {
             foreach ($proof in @('update-proof/update.descriptor','update-proof/update.signature')) {
                 if (!$hashes.ContainsKey($proof)) { throw 'Signed owned8 channel proof required for v2 whole installation.' }
             }
@@ -184,8 +230,7 @@ function Open-BapInstallBundle([string]$PackageRoot,[string]$GameRoot,[string]$R
             $planBytes=Read-BapInstallFile $RecoveryPlan;$plan=Read-BapInstallJson $planBytes
             if(($plan.schema -isnot [int] -and $plan.schema -isnot [long]) -or $plan.schema -ne 1 -or $plan.purpose -isnot [string] -or $plan.packageManifestSha256 -isnot [string] -or $plan.gameRoot -isnot [string] -or $plan.toVersion -isnot [string] -or $plan.fromVersion -isnot [string] -or $plan.receiptSha256 -isnot [string] -or $plan.purpose -cne 'manual-recovery' -or $plan.packageManifestSha256 -cne (Get-BapInstallHash $manifestBytes) -or $plan.gameRoot -cne $game -or $plan.toVersion -cne $manifest.version){throw '복구 계획이 현재 경로·입력 묶음과 다릅니다. / Recovery plan binding mismatch.'}
         }
-        $legacyRecovery=$plan -and $plan.allowLegacyProtocol -is [bool] -and $plan.allowLegacyProtocol -and $plugin.Protocol -eq 0 -and $launcher.Protocol -eq 0
-        if(!$legacyRecovery -and ($plugin.Protocol -isnot [int] -or $launcher.Protocol -isnot [int] -or $plugin.Protocol -ne 1 -or $launcher.Protocol -ne 1 -or !$launcher.MaintenanceApi)){throw 'DLL·런처가 같은 설치 규약의 묶음이 아닙니다. 최신 전체 설치 묶음을 사용하세요. / Incompatible installation components.'}
+        if($plugin.Protocol -isnot [int] -or $launcher.Protocol -isnot [int] -or $plugin.Protocol -ne 1 -or $launcher.Protocol -ne 1 -or !$launcher.MaintenanceApi){throw 'DLL·런처가 같은 설치 규약의 묶음이 아닙니다. 최신 전체 설치 묶음을 사용하세요. / Incompatible installation components.'}
         # A review record in the trusted package is not an authentication proof.
         # Never generate/adopt catalog entries at install time.
         [string[]]$names=@($hashes.Keys|Where-Object {$_ -cne 'tools/approved-install-bundles.json'})
@@ -199,6 +244,7 @@ function Open-BapInstallBundle([string]$PackageRoot,[string]$GameRoot,[string]$R
         $approved=@($catalog.bundles|Where-Object {$_.buildIdentity -is [string] -and $_.version -is [string] -and $_.kind -is [string] -and ($_.protocol -is [int] -or $_.protocol -is [long]) -and $_.buildIdentity -ceq $build -and $_.version -ceq $manifest.version -and $_.kind -ceq $manifest.kind -and $_.protocol -eq $plugin.Protocol})
         if($approved.Count -ne 1){throw '검토 등록되지 않은 설치 묶음입니다. 버전이 높아도 설치하지 않습니다. / Unregistered installation bundle.'}
         $bundle=@{Leases=$leases;PackageRoot=$package;GameRoot=$game;Expected=$expected;SourceHashes=$hashes;Version=$version;BuildIdentity=$build;ManifestSha256=(Get-BapInstallHash $manifestBytes);Recovery=$plan;Mode=$null;Observed=$null;Verifier=$null;RootIdentity=$null}
+        Assert-BapMaintenancePathPlan $bundle
         $state=Get-BapInstallState $bundle
         $bundle.RootIdentity=$state.RootIdentity
         if($plan -and ($plan.gameRootIdentity -isnot [string] -or $plan.gameRootIdentity -cne $bundle.RootIdentity)){throw '복구 계획의 실제 설치 root가 다릅니다. / Recovery plan root identity mismatch.'}
@@ -218,7 +264,7 @@ function Get-BapInstallState($Bundle) {
     $assembly=Get-BapInstallVerifier $Bundle
     $method=$assembly.GetType('SteamLauncher').GetMethod('ReadInstallerState',[Reflection.BindingFlags]'Public,Static')
     try{$value=$method.Invoke($null,@([string]$Bundle.GameRoot))}
-    catch{throw ('업데이트 버전 기록 또는 root를 확인할 수 없습니다. 기록·백업을 보존하세요. / Invalid update high-water record or root identity; retain records/backups. '+$_.Exception.GetBaseException().Message)}
+    catch{throw [InvalidOperationException]::new(('업데이트 버전 기록 또는 root를 확인할 수 없습니다. 기록·백업을 보존하세요. / Invalid update high-water record or root identity; retain records/backups. '+$_.Exception.GetBaseException().Message), $_.Exception)}
     if($value -isnot [string] -or $value.Length -gt 320 -or $value -cnotmatch '\ABetterAstralParty.InstallerState/v1\nroot=([A-F0-9]{8}:[A-F0-9]{16})\nversion=([^\r\n]*)\nwater-sha=([A-F0-9]{64})?\n\z'){throw '검사기의 설치 상태 응답이 잘못되었습니다. / Invalid installer state response.'}
     return @{RootIdentity=$Matches[1];HighestVersion=$Matches[2];WaterHash=$(if($Matches[3]){$Matches[3]}else{$null})}
 }
@@ -231,20 +277,20 @@ function Assert-BapInstallTransition($Bundle,[switch]$ConfirmRecovery) {
     $state=Assert-BapInstallRoot $Bundle
     $game=$Bundle.GameRoot;$receiptPath=Join-Path $game 'BetterAstralParty.install.json'
     $observed=@{}
-    foreach($p in @($Bundle.Expected.Keys)+@('BetterAstralParty.install.json','BetterAstralParty.update.version')){
+    foreach($p in @($Bundle.Expected.Keys)+@('BetterAstralParty.install.json','BetterAstralParty.update-v3.version')){
         $path=Join-Path $game $p;Assert-InstallTarget $game $path
         $observed[$p]=if(Test-Path -LiteralPath $path -PathType Leaf){Get-BapInstallHash (Read-BapInstallFile $path)}else{$null}
     }
-    if($observed['BetterAstralParty.update.version'] -cne $state.WaterHash){throw '검사 중 업데이트 버전 기록이 변경되었습니다. / High-water changed during preflight.'}
+    if($observed['BetterAstralParty.update-v3.version'] -cne $state.WaterHash){throw '검사 중 업데이트 버전 기록이 변경되었습니다. / High-water changed during preflight.'}
     if(!$observed['BetterAstralParty.install.json']){
-        if($Bundle.Recovery -or @($Bundle.Expected.Keys|Where-Object {$observed[$_]}).Count -or $observed['BetterAstralParty.update.version']){throw '설치 기록이 없거나 일부 파일만 있습니다. 수동 복구 검토가 필요합니다. / Incomplete installation requires recovery review.'}
+        if($Bundle.Recovery -or @($Bundle.Expected.Keys|Where-Object {$observed[$_]}).Count -or $observed['BetterAstralParty.update-v3.version']){throw '설치 기록이 없거나 일부 파일만 있습니다. 수동 복구 검토가 필요합니다. / Incomplete installation requires recovery review.'}
         $Bundle.Mode='FirstInstall';$Bundle.Observed=$observed;return
     }
     $receipt=Read-BapInstallJson (Read-BapInstallFile $receiptPath)
-    if(($receipt.schema -isnot [int] -and $receipt.schema -isnot [long]) -or $receipt.schema -ne 1 -or $receipt.owner -isnot [string] -or $receipt.owner -cne 'kr.betterastralparty.mod' -or @($receipt.PSObject.Properties).Count -ne $(if($receipt.PSObject.Properties.Name -ccontains 'channelState'){5}else{4}) -or ($null -ne $receipt.loaderBefore -and $receipt.loaderBefore -isnot [bool]) -or @($receipt.files).Count -ne 8){throw '기존 설치 기록을 확인할 수 없습니다. / Invalid existing installation receipt.'}
+    if(($receipt.schema -isnot [int] -and $receipt.schema -isnot [long]) -or $receipt.schema -ne 1 -or $receipt.baseline -cne '1.2.1' -or $receipt.channelState -isnot [string] -or $receipt.owner -isnot [string] -or $receipt.owner -cne 'kr.betterastralparty.mod' -or @($receipt.PSObject.Properties).Count -ne 6 -or ($null -ne $receipt.loaderBefore -and $receipt.loaderBefore -isnot [bool]) -or @($receipt.files).Count -ne 8){throw '새 1.2.1 설치 기준판의 기록만 지원합니다. 이전 패키지로 먼저 제거하세요. / New 1.2.1 receipt required; uninstall the previous version using its own package.'}
     $seen=@{}
     foreach($f in $receipt.files){if($f.path -isnot [string] -or !($Bundle.Expected.Keys -ccontains $f.path) -or $seen.ContainsKey($f.path) -or $f.sha256 -isnot [string] -or $f.sha256 -cnotmatch '\A[A-F0-9]{64}\z'){throw '기존 설치 기록의 소유 파일 목록이 잘못되었습니다. / Invalid existing owned inventory.'};$seen[$f.path]=$f.sha256}
-    $installed=Read-BapInstallMetadata (Read-BapInstallFile (Join-Path $game 'BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll'))
+    $installed=if($Bundle.Recovery -or !$observed['BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll']){Read-BapVerifiedInstalledState $Bundle}else{Read-BapInstallMetadata (Read-BapInstallFile (Join-Path $game 'BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll'))}
     $current=Get-BapInstallVersion $installed.Version
     $floor=$current
     if($state.HighestVersion){
@@ -252,7 +298,7 @@ function Assert-BapInstallTransition($Bundle,[switch]$ConfirmRecovery) {
     }
     $same=@($Bundle.Expected.Keys|Where-Object {$observed[$_] -cne $Bundle.Expected[$_]}).Count -eq 0
     $samePayload=@($seen.Keys|Where-Object {$seen[$_] -cne $Bundle.Expected[$_]}).Count -eq 0
-    $valid=@($seen.Keys|Where-Object {($null -ne $observed[$_] -or $_ -ceq 'BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll') -and $observed[$_] -cne $seen[$_]}).Count -eq 0
+    $valid=@($seen.Keys|Where-Object {$null -ne $observed[$_] -and $observed[$_] -cne $seen[$_]}).Count -eq 0
     if($Bundle.Recovery){
         $plan=$Bundle.Recovery
         if($plan.fromVersion -cne $current.Text -or $plan.receiptSha256 -cne $observed['BetterAstralParty.install.json'] -or !$plan.observedFiles -or @($plan.observedFiles.PSObject.Properties).Count -ne $observed.Count){throw '복구 계획의 현재 설치 기준이 다릅니다. / Recovery plan does not match the current installation.'}
@@ -260,7 +306,6 @@ function Assert-BapInstallTransition($Bundle,[switch]$ConfirmRecovery) {
         if($ConfirmRecovery -and (Read-Host '명시한 복구 묶음으로 교체합니다. 현재 파일은 백업하며 업데이트 버전 기록은 유지합니다. 계속하려면 y / Apply the reviewed recovery plan? [y/N]') -cne 'y'){throw '복구를 취소했습니다. 기존 설치는 보존됩니다. / Recovery cancelled.'}
         $Bundle.Mode='ReviewedRecovery'
     } else {
-        if($observed['BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll'] -ceq '2C6524A88482BFB6E394FBE0A9F6A0E3EE3E42FE15ED62577E33308184BDAD24' -or $observed['BetterAstralParty-Launcher.exe'] -ceq '25CAF5F38626545670BD34A5FB39C8193827499D204276003158630A24039C69'){throw '현재 파일에 과거 비호환 산출물이 있습니다. receipt를 정상 기준으로 채택하지 않습니다. 검토된 복구가 필요합니다. / Obsolete current image requires reviewed recovery.'}
         if(!$valid){throw '기존 설치 파일과 receipt가 다릅니다. 덮어쓰지 않고 중단합니다. / Existing installation differs from its receipt.'}
         if((Compare-BapInstallVersion $Bundle.Version $floor) -lt 0){throw ('현재 또는 적용된 업데이트보다 오래된 설치 묶음입니다 ('+$Bundle.Version.Text+' < '+$floor.Text+'). 최신 전체 묶음을 사용하세요. / Downgrade blocked.')}
         if((Compare-BapInstallVersion $Bundle.Version $current) -eq 0 -and !$samePayload){throw '같은 버전이지만 다른 빌드입니다. 기존 설치를 보존합니다. 검토된 복구 계획이 필요합니다. / Different build at the same version requires reviewed recovery.'}

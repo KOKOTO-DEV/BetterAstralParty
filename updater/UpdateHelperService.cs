@@ -40,7 +40,7 @@ namespace BetterAstralParty.Updating {
             // Unknown/corrupt journals or unsuccessful recovery remain blocked.
             try {
                 DiagnosticHub.Stage(DiagnosticFeature.Helper,DiagnosticPhase.Recovery,DiagnosticOutcome.Begin,DiagnosticOperation.VerifiedGuid(guard.Operation),ticket.Context.ReleaseTag);
-                var entry = UpdateRecoveryPolicy.Select(UpdateRecovery.Scan(fence), ticket.DescriptorHash, attemptWork, false);
+                var entry = UpdateRecoveryPolicy.Select(UpdateRecovery.Scan(fence), ticket.DescriptorHash, attemptWork);
                 if (entry == null) HelperRecoveryBinding.RequireNoUntrackedWork(fence, attemptWork);
                 var outcome = entry == null ? RecoveryOutcome.NoChanges : UpdateRecoveryPolicy.Outcome(UpdateTransaction.Recover(fence, entry.Work, trust, ticket.Context,diagnosticOperation:DiagnosticOperation.VerifiedGuid(guard.Operation)));
                 foreach (var remaining in UpdateRecovery.Scan(fence)) if (remaining.Pending) throw new ApplySafetyException(ApplyFailure.RecoveryRequired);
@@ -58,7 +58,7 @@ namespace BetterAstralParty.Updating {
                     || ticket.Context.RepositoryId == 0 && ticket.Context.Repository != "TSM701/BetterAstralParty") throw new ApplySafetyException(ApplyFailure.InvalidState);
                 ticket.Recheck(fence);
                 ticket.Context.Transition?.RequireStage(fence, ticket);
-                if (ticket.Context.RepositoryId == 0 && !trust.AllowsLegacyContracts) return HelperResult.ManualUpgradeRequired;
+                if (ticket.Context.RepositoryId == 0) return HelperResult.ManualUpgradeRequired;
                 if (UpdateFaults.ReadFile(fence, UpdateFaults.FailurePath) != null) return HelperResult.FaultDisabled;
                 try { using(var result=fence.OpenFile(stage+"/helper.result")) {
                     var lines=Encoding.ASCII.GetString(UpdateTicket.Read(result,128)).Split('\n');
@@ -128,7 +128,7 @@ namespace BetterAstralParty.Updating {
                             phase = FaultPhase.Apply;
                             diagnosticPhase = DiagnosticPhase.Apply;
                             DiagnosticHub.Stage(DiagnosticFeature.Helper,DiagnosticPhase.Apply,DiagnosticOutcome.Begin,DiagnosticOperation.VerifiedGuid(guard.Operation),ticket.Context.ReleaseTag);
-                            var work = "bap-txn-" + Guid.NewGuid().ToString("N");
+                            var work = "bap-v3-txn-" + Guid.NewGuid().ToString("N");
                             UpdateTicket.Write(fence, stage + "/helper.attempt", HelperRecoveryBinding.Attempt(hash, work));
                             attemptWork = work; // Durable before the transaction can create its plan or rename files.
                             var result = UpdateTransaction.Apply(fence, descriptorBytes, key, signature, zip, trust, ticket.Context
@@ -161,7 +161,7 @@ namespace BetterAstralParty.Updating {
             using (var fence = new WindowsFileFence(root)) using (var file = fence.OpenFile(stage + "/handoff.ticket")) {
                 var ticket = UpdateTicket.Parse(UpdateTicket.Read(file, UpdateTicket.MaxBytes)); ticket.Recheck(fence);
                 ticket.Context.Transition?.RequireStage(fence, ticket);
-                if (ticket.Context.RepositoryId == 0 && !trust.AllowsLegacyContracts) throw new ApplySafetyException(ApplyFailure.InstallationRequired);
+                if (ticket.Context.RepositoryId == 0) throw new ApplySafetyException(ApplyFailure.InstallationRequired);
                 if (ticket.Stage != stage) throw new ApplySafetyException(ApplyFailure.InvalidState);
                 var owner=UpdateFaults.ReadFile(fence,UpdateFaults.OperationPath);
                 if(owner!=null) HelperRecoveryBinding.RequireOwner(fence,ticket,owner);
@@ -173,7 +173,7 @@ namespace BetterAstralParty.Updating {
                 using(var source=fence.OpenFile(stage+"/key-id.bin")) key=UpdateTicket.Read(source,40);
                 if(trust.VerifyDescriptor(descriptor,Encoding.ASCII.GetString(key),signature,ticket.Context).DescriptorSha256!=ticket.DescriptorHash) throw new ApplySafetyException(ApplyFailure.RecoveryRequired);
                 var hash = UpdateTrust.Hash(ticket.Bytes()); var attemptWork = HelperRecoveryBinding.ReadAttempt(fence, ticket, hash);
-                var entry = UpdateRecoveryPolicy.Select(UpdateRecovery.Scan(fence), ticket.DescriptorHash, attemptWork, ticket.Context.RepositoryId == 0 && trust.AllowsLegacyContracts);
+                var entry = UpdateRecoveryPolicy.Select(UpdateRecovery.Scan(fence), ticket.DescriptorHash, attemptWork);
                 if (entry == null) HelperRecoveryBinding.RequireNoUntrackedWork(fence, attemptWork);
                 // A direct interrupted recovery must establish effective durable OFF before
                 // mutation/guard retirement. Completed-history inspection creates no new latch.

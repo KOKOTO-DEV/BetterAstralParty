@@ -67,11 +67,11 @@ var state = Path.Combine(root, "state", "BetterAstralParty"); var localLogs = Pa
 var receiptPath = Path.Combine(remnants, "BetterAstralParty.install.json"); File.WriteAllText(receiptPath, "FAKE_RAW_RECEIPT");
 var remnantLog = Path.Combine(remnants, "BepInEx", "BetterAstralParty-Diagnostics", "current.log"); Directory.CreateDirectory(Path.GetDirectoryName(remnantLog)!);
 File.WriteAllText(remnantLog, "2026-10-11T01:00:00Z | phase=7\nAuthorization: Bearer FAKE_RAW_RUNTIME_SECRET\n");
-File.WriteAllText(Path.Combine(remnants, "BetterAstralParty.update.version"), "FAKE_RAW_WATER");
-var workId = new string('a', 32); var work = Path.Combine(remnants, "bap-helperauto-" + workId); Directory.CreateDirectory(work);
+File.WriteAllText(Path.Combine(remnants, "BetterAstralParty.update-v3.version"), "FAKE_RAW_WATER");
+var workId = new string('a', 32); var work = Path.Combine(remnants, "bap-v3-helperauto-" + workId); Directory.CreateDirectory(work);
 File.WriteAllText(Path.Combine(work, "plan"), "FAKE_RAW_PLAN");
 var targetKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(remnants).TrimEnd('\\').ToLowerInvariant())));
-var backups = Path.Combine(state, "Backups", targetKey); Directory.CreateDirectory(backups);
+var backups = Path.Combine(state, "Backups", "v3", targetKey); Directory.CreateDirectory(backups);
 File.WriteAllText(Path.Combine(backups, "pending.json"), "FAKE_RAW_BACKUP");
 var credentials = Path.Combine(localLogs, "credential-store.json"); File.WriteAllText(credentials, "FAKE_RAW_CREDENTIAL");
 var receiptHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(receiptPath)));

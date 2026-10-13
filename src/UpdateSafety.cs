@@ -20,29 +20,33 @@ internal sealed class FileUpdateSafety(string root, Func<bool, bool, Task> save,
     private readonly SemaphoreSlim _preferences = new(1, 1);
     public async Task<UpdateSafetySnapshot> Probe()
     {
-        using var fence = new WindowsFileFence(root);
-        var fault = UpdateFaults.ReadFile(fence, UpdateFaults.FailurePath);
-        var operation = UpdateFaults.ReadFile(fence, UpdateFaults.OperationPath);
-        if (fault == null && operation != null && UpdateFaults.OwnerAlive(fence, operation)) return new UpdateSafetySnapshot(Busy: true, Stage: operation.Stage == "-" ? null : operation.Stage);
-        fault = UpdateFaults.Read(fence); // Includes interrupted guard and save-failure evidence.
-        var stage = UpdateRecovery.PendingTicket(fence, operation, fault);
-        if (stage != null && fault == null) {
-            using var file = fence.OpenFile(stage + "/handoff.ticket"); var ticket = UpdateTicket.Parse(UpdateTicket.Read(file, UpdateTicket.MaxBytes)); ticket.Recheck(fence);
-            fault = UpdateFaults.Fail(fence, ticket.Context, FaultPhase.Recovery, FaultReason.Recovery, stage);
+        try {
+            using var fence = new WindowsFileFence(root);
+            var fault = UpdateFaults.ReadFile(fence, UpdateFaults.FailurePath);
+            var operation = UpdateFaults.ReadFile(fence, UpdateFaults.OperationPath);
+            if (fault == null && operation != null && UpdateFaults.OwnerAlive(fence, operation)) return new UpdateSafetySnapshot(Busy: true, Stage: operation.Stage == "-" ? null : operation.Stage);
+            fault = UpdateFaults.Read(fence); // Includes interrupted guard and save-failure evidence.
+            var stage = UpdateRecovery.PendingTicket(fence, operation, fault);
+            if (stage != null && fault == null) {
+                using var file = fence.OpenFile(stage + "/handoff.ticket"); var ticket = UpdateTicket.Parse(UpdateTicket.Read(file, UpdateTicket.MaxBytes)); ticket.Recheck(fence);
+                fault = UpdateFaults.Fail(fence, ticket.Context, FaultPhase.Recovery, FaultReason.Recovery, stage);
+            }
+            ReceiptChannelState? channels = null; string? installed = null;
+            if (fault == null && stage == null) {
+                try { using var file = fence.OpenFile(InstallReceipt.Path); var receipt = InstallReceipt.Parse(UpdateTicket.Read(file, 16384));
+                    using var plugin = fence.OpenFile(UpdateTrust.PluginPath); var metadata = InstalledPluginMetadata.Read(UpdateTicket.Read(plugin, UpdateTrust.MaxFileBytes));
+                    if (plugin.Hash() != receipt.Files[UpdateTrust.PluginPath]) throw new ApplySafetyException(ApplyFailure.RecoveryRequired);
+                    channels = receipt.Channels; installed = metadata.Version;
+                    if (channels != null && (channels.Root != fence.RootIdentity.Text || channels.ActiveVersion != installed || metadata.UpdateProtocol != 3 || metadata.SettingsSchema != 1))
+                        throw new ApplySafetyException(ApplyFailure.RecoveryRequired);
+                } catch (ApplySafetyException error) when (error.NativeError == 2) { }
+                if (readiness != null) await readiness().ConfigureAwait(false);
+            }
+            return new UpdateSafetySnapshot(fault, RecoveryRequired: stage != null, Stage: stage ?? (fault?.Stage == "-" ? null : fault?.Stage), Channels: channels, InstalledVersion: installed);
+        } catch (ApplySafetyException error) when (error.Failure == ApplyFailure.FileBusy && error.NativeError is 32 or 33) {
+            // A temporary read/handshake lock must not persistently disable update preferences.
+            return new UpdateSafetySnapshot(Busy: true);
         }
-        ReceiptChannelState? channels = null; string? installed = null;
-        if (fault == null && stage == null) {
-            try { using var file = fence.OpenFile(InstallReceipt.Path); var receipt = InstallReceipt.Parse(UpdateTicket.Read(file, 16384));
-                using var plugin = fence.OpenFile(UpdateTrust.PluginPath); var metadata = InstalledPluginMetadata.Read(UpdateTicket.Read(plugin, UpdateTrust.MaxFileBytes));
-                if (plugin.Hash() != receipt.Files[UpdateTrust.PluginPath]) throw new ApplySafetyException(ApplyFailure.RecoveryRequired);
-                channels = receipt.Channels; installed = metadata.Version;
-                if (channels != null && (channels.Root != fence.RootIdentity.Text || channels.ActiveVersion != installed || metadata.UpdateProtocol != 2 || metadata.SettingsSchema != 1))
-                    throw new ApplySafetyException(ApplyFailure.RecoveryRequired);
-            } catch (ApplySafetyException error) when (error.NativeError == 2) { }
-            catch (ApplySafetyException error) when (error.Failure == ApplyFailure.FileBusy && error.NativeError == 32) { return new UpdateSafetySnapshot(Busy: true); }
-            if (readiness != null) await readiness().ConfigureAwait(false);
-        }
-        return new UpdateSafetySnapshot(fault, RecoveryRequired: stage != null, Stage: stage ?? (fault?.Stage == "-" ? null : fault?.Stage), Channels: channels, InstalledVersion: installed);
     }
     public Task<UpdateFault> Begin(UpdateContext context)
     {

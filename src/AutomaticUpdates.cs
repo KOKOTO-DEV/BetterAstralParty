@@ -59,7 +59,8 @@ internal sealed class AutomaticUpdates : IDisposable {
     internal void SetChannel(ReleaseChannel channel) {
         if (_downloads.Feed?.Channel == channel.ToString()) return;
         Retire(true); _downloads.SelectFeed(channel); _downloads.Configure(_authentication); _identity = Identity;
-        if (!_blocked && _inspection == null) Set(Configured ? _cancel != null ? AutomaticUpdateStatus.Cancelling : AutomaticUpdateStatus.Idle : AutomaticUpdateStatus.NotConfigured);
+        RefreshTransition();
+        if (!_blocked && _inspection == null) Set(Configured ? _cancel != null ? AutomaticUpdateStatus.Cancelling : _requiresTransition ? AutomaticUpdateStatus.TransitionRequired : AutomaticUpdateStatus.Idle : AutomaticUpdateStatus.NotConfigured);
     }
     internal bool AuthenticationLost => _downloads.Result.Status is UpdateDownloadStatus.AuthenticationRequired or UpdateDownloadStatus.AccessUnavailable;
     internal bool AccessLost => _downloads.Result.Status == UpdateDownloadStatus.AccessUnavailable;
@@ -155,19 +156,24 @@ internal sealed class AutomaticUpdates : IDisposable {
         else if (_inspection == null && RecoveryStage == null) Set(!Configured ? AutomaticUpdateStatus.NotConfigured : _requiresTransition ? AutomaticUpdateStatus.TransitionRequired : request == null ? AutomaticUpdateStatus.MissingAssets : AutomaticUpdateStatus.Idle);
     }
     private void RefreshTransition() {
-        _requiresTransition = false;
-        if (_request != null && _request.Context.Transition == null && _channels != null && _channels.ActiveChannel != _request.Context.Channel) {
-            var context = _request.Context; var floor = _channels.Floor(context);
-            _requiresTransition = UpdateVersion.Parse(context.ReleaseTag).CompareTo(UpdateVersion.Parse(context.CurrentVersion)) <= 0
-                || floor != null && UpdateVersion.Parse(context.ReleaseTag).CompareTo(UpdateVersion.Parse(floor)) <= 0;
-        }
+        _requiresTransition = _request?.Context.Transition == null && _channels != null && _downloads.Feed is { } feed
+            && _channels.ActiveChannel != feed.Channel;
     }
+    internal bool CanReviewTransition => Configured && !_blocked && _channels != null && _installedVersion == _channels.ActiveVersion && _downloads.Feed is { } feed
+        && _channels.ActiveChannel != feed.Channel && _pending == null && _ready == null && _cancel == null
+        && _inspection == null && _begin == null && _completion == null && _operation == null;
+    internal Task<ChannelTransitionProposal> ProposeTransition(UpdateDownloadRequest request, DateTimeOffset now, CancellationToken cancellation)
+        => CanReviewTransition ? _downloads.Propose(request, now, cancellation) : throw new InvalidOperationException("Channel transition is unavailable");
+    internal bool CurrentTransitionProposal(ChannelTransitionProposal proposal) => CanReviewTransition && _downloads.CurrentProposal(proposal);
     // Separate explicit settings command. Existing saved OFF values remain OFF; only this
     // confirmed target may be queued once if the confirmation explicitly says after exit.
     internal bool ConfirmTransition(UpdateDownloadRequest request, int sourceGeneration, DateTimeOffset now, bool applyOnceAfterExit)
     {
         var feed = _downloads.Feed;
-        if (!Configured || _blocked || request.Context.Transition == null || feed == null || request.Context.Repository != feed.Repository || request.Context.RepositoryId != feed.RepositoryId || request.Context.Channel != feed.Channel
+        if (!Configured || _blocked || request.Context.Transition == null || feed == null || _channels == null
+            || _channels.ActiveChannel != request.Context.Transition.SourceChannel || _channels.ActiveChannel == request.Context.Channel
+            || _channels.Root != request.Context.Transition.Root || _installedVersion != request.Context.CurrentVersion
+            || request.Context.Repository != feed.Repository || request.Context.RepositoryId != feed.RepositoryId || request.Context.Channel != feed.Channel
             || _pending != null || _ready != null || _cancel != null || _inspection != null || _begin != null || _completion != null || _operation != null
             || Status is not (AutomaticUpdateStatus.Idle or AutomaticUpdateStatus.MissingAssets or AutomaticUpdateStatus.Cancelled or AutomaticUpdateStatus.TransitionRequired)) return false;
         _explicitTransition = null; Context(request, sourceGeneration);
@@ -228,7 +234,7 @@ internal sealed class AutomaticUpdates : IDisposable {
             try {
                 var result = inspection.GetAwaiter().GetResult(); RecoveryStage = result.Stage; _recovery = result.RecoveryRequired; _channels = result.Channels; _installedVersion = result.InstalledVersion; RefreshTransition();
                 if (result.Fault != null) Disable(result.Fault.Phase, result.Fault.Reason, _recovery ? AutomaticUpdateStatus.RecoveryRequired : AutomaticUpdateStatus.FaultDisabled, result.Fault);
-                else if (result.Busy) { _blocked = true; Set(AutomaticUpdateStatus.FilesBusy); }
+                else if (result.Busy) { _blocked = true; _retryAt = now.AddSeconds(2); Set(AutomaticUpdateStatus.FilesBusy); }
                 else if (_recovery) { _blocked = true; Set(AutomaticUpdateStatus.RecoveryRequired); }
                 else Set(Configured ? _requiresTransition ? AutomaticUpdateStatus.TransitionRequired : AutomaticUpdateStatus.Idle : AutomaticUpdateStatus.NotConfigured);
             } catch (Exception ex) {
@@ -243,6 +249,9 @@ internal sealed class AutomaticUpdates : IDisposable {
             catch { Disable(FaultPhase.Preparation, FaultReason.Storage, AutomaticUpdateStatus.CancelFailed); _retiredContext = null; _retiredStage = null; }
         }
         if (_completion is { IsCompleted: true } completion) { _completion = null; try { completion.GetAwaiter().GetResult(); } catch { Disable(FaultPhase.Preparation, FaultReason.Storage); } }
+        if (_blocked && Status == AutomaticUpdateStatus.FilesBusy && _safety != null && _inspection == null && now >= _retryAt) {
+            _blocked = false; _inspection = Task.Run(() => _safety.Probe()); Set(AutomaticUpdateStatus.CheckingInstallation);
+        }
         if (_blocked) return;
         if (_identity != Identity) { Retire(true); _identity = Identity; _downloads.Configure(_authentication); Set(Configured ? AutomaticUpdateStatus.Idle : AutomaticUpdateStatus.NotConfigured); return; }
         if (_begin is { IsCompleted: true } begin) { _begin = null; try { _operation = begin.GetAwaiter().GetResult(); StartDownload(now); } catch { Disable(FaultPhase.Preparation, FaultReason.Storage, AutomaticUpdateStatus.FaultStorageFailed); } }

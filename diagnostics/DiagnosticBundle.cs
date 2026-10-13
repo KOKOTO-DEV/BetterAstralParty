@@ -104,6 +104,8 @@ namespace BetterAstralParty.Diagnostics
             "recovery-inventory.json: fixed mod files, recovery markers and this installation's backup markers: presence, size and SHA-256 only.\r\n" +
             "recovery-inventory.json은 고정 모드 파일·복구 표식·해당 설치의 백업 표식에 대해 존재·크기·SHA-256만 기록합니다.\r\n" +
             "Missing game/loader files do not prevent this inventory; it is not installation or recovery verification.\r\n" +
+            "Fixed launch-file observations are collection-time snapshots, not a reconstructed launch failure or its cause.\r\n" +
+            "고정 실행 파일 관측은 ZIP 수집 시점의 상태이며 이전 실행 실패나 원인을 재구성하지 않습니다.\r\n" +
             "게임·로더 파일이 일부 없어도 목록을 수집합니다. 이 목록은 설치 정상 판정이나 복구 검증이 아닙니다.\r\n" +
             "Fixed paths and typed fields only; card/hand/chat payload, unknown text, full configs, credential stores,\r\n" +
             "raw updater/backup state, dumps and arbitrary files are excluded. General runtime logs remain typed projections.\r\n" +
@@ -396,9 +398,9 @@ namespace BetterAstralParty.Diagnostics
         {
             private readonly List<string> files = new List<string>(), roots = new List<string>(), observations = new List<string>();
             private long reserved; private int atomicCount;
-            private static readonly Regex WorkNames = Pattern(@"\Abap-(helper|helperbridge|helperauto|wholeintent|txn|stage)-[a-f0-9]{32}\z");
+            private static readonly Regex WorkNames = Pattern(@"\Abap-(?:v3-)?(helper|helperbridge|helperauto|wholeintent|wholehist|txn|stage)-[a-f0-9]{32}\z");
             private static readonly Regex GenerationNames = Pattern(@"\A[a-f0-9]{32}\z");
-            private static readonly Regex RootMarkers = Pattern(@"\A(?:bap-transition-|BetterAstralParty\.reinstall\.completed-|BetterAstralParty\.update\.version\.uninstalled-)[a-f0-9]{32}\z");
+            private static readonly Regex RootMarkers = Pattern(@"\A(?:bap-(?:v3-)?transition-|BetterAstralParty\.reinstall(?:-v3)?\.completed-|BetterAstralParty\.update(?:-v3)?\.version\.uninstalled-)[a-f0-9]{32}\z");
             private static readonly Regex AtomicMarkers = Pattern(@"\A(plan|descriptor|signature|image|receipt|committed)-pending-[a-f0-9]{32}\z");
             internal void RootStatus(string id, string status) { roots.Add("{\"source\":" + Quote(id) + ",\"status\":" + Quote(status) + "}"); }
             private void Observe(string id, string code, bool? potential)
@@ -408,7 +410,7 @@ namespace BetterAstralParty.Diagnostics
             }
             private bool? File(Fence root, string relative, string id)
             {
-                string status = "hashed", hash = null; long? size = null; bool? present = null;
+                string status = "hashed", hash = null; long? size = null; bool? present = null; int hresult = 0;
                 try
                 {
                     using (var file = root.Open(relative, false, true))
@@ -423,15 +425,15 @@ namespace BetterAstralParty.Diagnostics
                         }
                     }
                 }
-                catch (FileNotFoundException) { status = "missing"; present = false; }
-                catch (DirectoryNotFoundException) { status = "missing"; present = false; }
-                catch (UnauthorizedAccessException) { status = "unsafe-or-denied"; }
-                catch (ArgumentException) { status = "unsafe-path"; }
-                catch (IOException) { status = "locked-or-unreadable"; }
-                catch { status = "hash-unavailable"; }
+                catch (FileNotFoundException error) { status = "missing"; present = false; hresult = error.HResult; }
+                catch (DirectoryNotFoundException error) { status = "missing"; present = false; hresult = error.HResult; }
+                catch (UnauthorizedAccessException error) { status = "unsafe-or-denied"; hresult = error.HResult; }
+                catch (ArgumentException error) { status = "unsafe-path"; hresult = error.HResult; }
+                catch (IOException error) { status = "locked-or-unreadable"; hresult = error.HResult; }
+                catch (Exception error) { status = "hash-unavailable"; hresult = error.HResult; }
                 files.Add("{\"source\":" + Quote(id) + ",\"present\":" + (present.HasValue ? (present.Value ? "true" : "false") : "null")
                     + ",\"sizeBytes\":" + (size.HasValue ? size.Value.ToString(CultureInfo.InvariantCulture) : "null")
-                    + ",\"sha256\":" + (hash == null ? "null" : Quote(hash)) + ",\"status\":" + Quote(status) + "}");
+                    + ",\"sha256\":" + (hash == null ? "null" : Quote(hash)) + ",\"status\":" + Quote(status) + ",\"hresult\":" + Quote("0x" + hresult.ToString("X8", CultureInfo.InvariantCulture)) + "}");
                 return present;
             }
             private List<string> Scan(Fence root, Regex pattern, string id)
@@ -456,11 +458,11 @@ namespace BetterAstralParty.Diagnostics
             internal void Game(Fence game)
             {
                 RootStatus("game", "pinned-selected-root");
-                string[] owned = { "AstralParty-Vanilla.cmd", "BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll", "BetterAstralParty-Launcher.exe",
+                string[] owned = { "AstralParty_INT.exe", "AstralParty-Vanilla.cmd", "BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll", "BetterAstralParty-Launcher.exe",
                     "BetterAstralParty-Mod.cmd", "BetterAstralParty-Steam.ps1", "BetterAstralParty.compatibility.json", "check-compatibility.ps1", "steam-shortcut.ps1",
-                    "BetterAstralParty-UpdateHelper.exe", "BetterAstralParty.helper.receipt", "BetterAstralParty.install.json", "BetterAstralParty.update.version", "BetterAstralParty.update.lock" };
+                    "BetterAstralParty-UpdateHelper.exe", "BetterAstralParty.helper.receipt", "BetterAstralParty.install.json", "BetterAstralParty.update-v3.version", "BetterAstralParty.update.version", "BetterAstralParty.update.lock" };
                 foreach (string path in owned) File(game, path, "game/" + path);
-                string[] pending = { "BetterAstralParty.reinstall.pending", "BetterAstralParty.update.failure", "BetterAstralParty.update.operation",
+                string[] pending = { "BetterAstralParty.reinstall-v3.pending", "BetterAstralParty.update-v3.failure", "BetterAstralParty.update-v3.operation", "BetterAstralParty.update-v3.preferences-failed", "BetterAstralParty.update-v3.failed", "BetterAstralParty.reinstall.pending", "BetterAstralParty.update.failure", "BetterAstralParty.update.operation",
                     "BetterAstralParty.update.preferences-failed", "BetterAstralParty.update.failed" };
                 foreach (string path in pending) Observe("game/" + path, "root-marker-observed", File(game, path, "game/" + path));
                 int alias = 0;
@@ -473,7 +475,7 @@ namespace BetterAstralParty.Diagnostics
                         using (var work = new Fence(Path.Combine(game.Root, name)))
                         {
                             string[] markers = kind == "stage" ? new[] { "descriptor.bin", "signature.bin", "key-id.bin", "handoff.ticket", "helper.owner", "helper.ready", "helper.cancel", "helper.attempt", "helper.recovery" }
-                                : kind == "wholeintent" ? new[] { "plan", "target-receipt", "committed", "cancelled" }
+                                : kind == "wholeintent" || kind == "wholehist" ? new[] { "plan", "target-receipt", "signed-update.descriptor", "signed-update.signature", "committed", "cancelled" }
                                 : kind == "txn" ? new[] { "plan", "commit-intent", "committed", "rolled-back" }
                                 : kind == "helper" ? new[] { "plan", "descriptor", "signature", "receipt", "committed" }
                                 : new[] { "plan", "committed" };
@@ -504,7 +506,7 @@ namespace BetterAstralParty.Diagnostics
                 alias = 0;
                 foreach (string name in Scan(game, RootMarkers, "game/generation-markers"))
                 {
-                    string kind = name.StartsWith("bap-transition-", StringComparison.Ordinal) ? "transition" : name.StartsWith("BetterAstralParty.reinstall.", StringComparison.Ordinal) ? "reinstall-completed" : "archived-version";
+                    string kind = name.StartsWith("bap-transition-", StringComparison.Ordinal) || name.StartsWith("bap-v3-transition-", StringComparison.Ordinal) ? "transition" : name.StartsWith("BetterAstralParty.reinstall.", StringComparison.Ordinal) || name.StartsWith("BetterAstralParty.reinstall-v3.", StringComparison.Ordinal) ? "reinstall-completed" : "archived-version";
                     string id = "game/" + kind + "/" + (++alias).ToString("D2", CultureInfo.InvariantCulture);
                     bool? present = File(game, name, id);
                     if (kind == "transition") Observe(id, "transition-marker-observed", present);
@@ -521,7 +523,7 @@ namespace BetterAstralParty.Diagnostics
                     { RootStatus("installer-backups", "not-known-log-root"); return; }
                     string key;
                     using (var sha = SHA256.Create()) key = BitConverter.ToString(sha.ComputeHash(Utf8.GetBytes(game.Root.TrimEnd('\\').ToLowerInvariant()))).Replace("-", "");
-                    using (var backups = new Fence(Path.Combine(parent, "Backups", key)))
+                    using (var backups = new Fence(Path.Combine(parent, "Backups", "v3", key)))
                     {
                         RootStatus("installer-backups", "pinned-target-root");
                         Observe("installer-backups/pending.json", "installer-pending-marker-observed", File(backups, "pending.json", "installer-backups/pending.json"));
@@ -542,7 +544,8 @@ namespace BetterAstralParty.Diagnostics
             internal string Json(bool gameValid)
             {
                 return "{\"schema\":1,\"contentsIncluded\":false,\"installationVerified\":false,\"gameMarkersValidated\":" + (gameValid ? "true" : "false")
-                    + ",\"recoveryAuthenticated\":false,\"identities\":\"bundle-local-aliases\",\"observationsAreDiagnosis\":false,\"hashReservedBytes\":" + reserved
+                    + ",\"recoveryAuthenticated\":false,\"identities\":\"bundle-local-aliases\",\"observationsAreDiagnosis\":false,\"observedAt\":\"collection-time\",\"historyReconstructed\":false"
+                    + ",\"expectedLaunchFiles\":[\"game/AstralParty_INT.exe\",\"game/BetterAstralParty-Steam.ps1\",\"game/check-compatibility.ps1\",\"game/BetterAstralParty-Launcher.exe\"],\"hashReservedBytes\":" + reserved
                     + ",\"limits\":{\"directoryEntries\":512,\"matchingEntriesPerDirectory\":64,\"atomicFilesTotal\":64,\"fileBytes\":67108864,\"hashTotalBytes\":67108864},\"roots\":["
                     + String.Join(",", roots.ToArray()) + "],\"files\":[" + String.Join(",", files.ToArray()) + "],\"observations\":[" + String.Join(",", observations.ToArray()) + "]}\n";
             }
@@ -889,7 +892,7 @@ namespace BetterAstralParty.Diagnostics
             if (pending != null && !row.Truncated) AppendRecord(result, pending.Render(), row, max, ref count);
             return Utf8.GetBytes(result.ToString());
         }
-        private static readonly Regex ErrorBoundary = Pattern(@"\A(?:BetterAstralParty |BAP-[A-Z-]+|(?:Code|Time|Run|Version|Stage|PowerShell|Package|Game|ErrorType|ErrorId|HResult|Message|Location|Stack|Exception|Allowed|Issues|Warnings|SteamDiagnostic|SteamProcess|DiagnosticCoverage):|\s*(?:at (?:System|Microsoft|BetterAstralParty)\.|System\.[A-Za-z.]+Exception\b|--- End of))");
+        private static readonly Regex ErrorBoundary = Pattern(@"\A(?:BetterAstralParty |BAP-[A-Z-]+|(?:Code|Time|Run|Version|Stage|PowerShell|Package|Game|ErrorType|ErrorId|HResult|Message|Location|Stack|Exception|Allowed|Issues|Warnings|SteamDiagnostic|SteamProcess|SteamObservationProcess|SteamObservationCoverage|DiagnosticCoverage|LaunchRoot|LaunchFile|LaunchFailure):|\s*(?:at (?:System|Microsoft|BetterAstralParty)\.|System\.[A-Za-z.]+Exception\b|--- End of))");
         private static readonly Regex ErrorPath = Pattern(@"(?i)(?:[a-z]:[\\/]|\\\\|%USERPROFILE%[\\/]|/(?:home|Users|tmp|var|mnt|media|opt|data)/)(?:[^\r\n""'<>|]*?\.(?:dll|exe|ps1|cs|cmd|json|hash|log|vdf)(?=[:\s""'<>|,;)]|$)|[^\r\n""'<>|]*)");
         private static readonly Regex ErrorSecret = Pattern(@"(?i)(?:\b(?:authorization|proxy-authorization|cookie|set-cookie|password|passwd|pwd|credential|(?:client[ _-]?)?secret|signature|private[ _-]?key|access[ _-]?key|api[ _-]?key|(?:access|refresh|id|auth)[ _-]?token|token|session[ _-]?id|steam[ _-]?id|user[ _-]?id|account(?:[ _-]?(?:id|name))?|username|nickname|display[ _-]?name|player[ _-]?name|email|chat|ip[ _-]?address|토큰|비밀번호|암호|닉네임|계정|사용자명)\b\s*[""']?\s*[:=]|\b(?:bearer|basic)\s+\S+|gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|AKIA[A-Z0-9]{16}|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|-----BEGIN.*(?:PRIVATE|OPENSSH|PGP).*(?:KEY|BLOCK))");
         private static readonly Regex ErrorPrivate = Pattern(@"(?i)(?:(?:https?|wss?|ftp)://[^\s""'<>]*|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|\b(?:\d{1,3}\.){3}\d{1,3}\b|\b(?:[0-9a-f]{1,4}:){4,}[0-9a-f:]+\b|\b[0-9a-f:]*::[0-9a-f:]+\b|\b[0-9]{17}\b|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b[A-Za-z0-9_+/=-]{64,}\b|(?<=Run: )[0-9a-f]{32}\b)");
@@ -902,6 +905,11 @@ namespace BetterAstralParty.Diagnostics
         private static readonly Regex SteamHeader = Pattern(@"\ASteamDiagnostic: schema=1; reason=(?:ProcessObservationUnavailable|SteamOwnershipUnknown|SteamOtherSession|SteamRunning|ProcessListChanged|ProcessIdentityChanged|ProcessTerminationFailed|ConsentCancelled|ConsentUnavailable); phase=(?:ShutdownObservation|ShutdownConsent|ShutdownRecheck|ProcessIdentity|ProcessTermination|ShutdownCompletion|InstallPreflight|UninstallPreflight|ShortcutPreflight|ShortcutCommit|ShortcutRollback|Resume); utc=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z; observedCount=[0-9]{1,10}; omittedCount=[0-9]{1,10}\z");
         private static readonly Regex SteamProcess = Pattern(@"\ASteamProcess: index=(?:[1-9]|[1-3][0-9]|4[0-8]); pid=[1-9][0-9]{0,9}; sessionMatch=(?:true|false|unknown); pathAvailable=(?:true|false); pathMatch=(?:true|false|unknown); startAvailable=(?:true|false); startedUtc=(?:unknown|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z)\z");
         private static readonly Regex DiagnosticCoverage = Pattern(@"\ADiagnosticCoverage: (?:exceptionDepth=[0-8]; exceptionChainOmitted=(?:true|false); textTruncated=(?:true|false); steamContext=(?:not-observed|included|context-limit|invalid-context)|log-text-limit)\z");
+        private static readonly Regex SteamObservationProcess = Pattern(@"\ASteamObservationProcess: index=(?:[1-9]|[1-3][0-9]|4[0-8]); pid=[1-9][0-9]{0,9}; kind=(?:SteamClient|SteamWebHelper|SteamOverlay|SteamErrorReporter|Game|Launcher|UpdateHelper|Other); querySource=(?:Managed|Native|Unavailable); nativeError=[0-9]{1,10}; exitAvailable=(?:true|false); confirmedExit=(?:true|false)\z");
+        private static readonly Regex SteamObservationCoverage = Pattern(@"\ASteamObservationCoverage: status=(?:included|invalid-context)\z");
+        private static readonly Regex LaunchRoot = Pattern(@"\ALaunchRoot: source=LauncherDirectory; state=(?:File|Directory|Missing|Denied|Invalid|Unavailable|Linked); hresult=0x[A-F0-9]{8}\z");
+        private static readonly Regex LaunchFile = Pattern(@"\ALaunchFile: kind=(?:GameExecutable|EntryScript|CompatibilityScript|Launcher); state=(?:File|Directory|Missing|Denied|Invalid|Unavailable|Linked); hresult=0x[A-F0-9]{8}\z");
+        private static readonly Regex LaunchFailure = Pattern(@"\ALaunchFailure: schema=1; phase=(?:SteamContext|LauncherSnapshot|UpdateGate|Compatibility|SharedLoader|GameStart|GameExit); errorType=(?:System\.IO\.(?:FileNotFoundException|DirectoryNotFoundException|IOException)|System\.(?:UnauthorizedAccessException|ArgumentException|InvalidOperationException|NotSupportedException)|System\.ComponentModel\.Win32Exception|System\.Security\.SecurityException|Unknown); hresult=0x[A-F0-9]{8}\z");
         private static void ErrorRejected(Row row, string reason)
         {
             row.Dropped++; if (row.Rejections == null) row.Rejections = new Dictionary<string,int>(StringComparer.Ordinal);
@@ -918,9 +926,9 @@ namespace BetterAstralParty.Diagnostics
                     if (line.Length > 16384) { row.Redacted++; row.Dropped++; row.Truncated = true; continuation = true; continue; }
                     line = Ansi.Replace(line.Normalize(NormalizationForm.FormKC), "");
                     if (ErrorBoundary.IsMatch(line)) continuation = false;
-                    if (!keyBlock && Regex.IsMatch(line, @"\A(?:SteamDiagnostic|SteamProcess|DiagnosticCoverage):", RegexOptions.CultureInvariant))
+                    if (!keyBlock && Regex.IsMatch(line, @"\A(?:SteamDiagnostic|SteamProcess|SteamObservationProcess|SteamObservationCoverage|DiagnosticCoverage|LaunchRoot|LaunchFile|LaunchFailure):", RegexOptions.CultureInvariant))
                     {
-                        if (!SteamHeader.IsMatch(line) && !SteamProcess.IsMatch(line) && !DiagnosticCoverage.IsMatch(line)) { ErrorRejected(row, "invalid-failure-context"); continuation = true; continue; }
+                        if (!SteamHeader.IsMatch(line) && !SteamProcess.IsMatch(line) && !SteamObservationProcess.IsMatch(line) && !SteamObservationCoverage.IsMatch(line) && !DiagnosticCoverage.IsMatch(line) && !LaunchRoot.IsMatch(line) && !LaunchFile.IsMatch(line) && !LaunchFailure.IsMatch(line)) { ErrorRejected(row, "invalid-failure-context"); continuation = true; continue; }
                         row.Projected++; if (!AppendRecord(result, line, row, max, ref count)) break;
                         continue;
                     }

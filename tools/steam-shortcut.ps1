@@ -4,6 +4,50 @@
     [Alias('SteamRoot')][string]$BapShortcutSteamRoot = (Get-ItemProperty 'HKCU:/Software/Valve/Steam').SteamPath,
     [Alias('AccountId')][uint32]$BapShortcutAccountId = 0
 )
+function Get-BapProcessObservation($Process) {
+    $id=[int]$Process.Id; $name=''; try{$name=[string]$Process.ProcessName}catch{}
+    $path=$null; $started=$null; $session=$null; $exited=$null; $nativeError=0
+    try { $value=$Process.HasExited; if($value -is [bool]){$exited=$value} } catch {}
+    if($exited -ne $true) {
+        try { $value=$Process.Path; if($value -is [string] -and $value){$path=[IO.Path]::GetFullPath($value)} } catch {}
+        try { $value=$Process.SessionId; if(($value -is [int] -or $value -is [uint32]) -and $value -ge 0){$session=[long]$value} } catch {}
+        try { $value=$Process.StartTime; if($value -is [datetime]){$started=$value} } catch {}
+        try { $value=$Process.HasExited; if($value -is [bool]){$exited=$value} } catch {}
+    }
+    $source='Managed'
+    if($exited -ne $true -and (!$path -or !$started -or $null -eq $session -or $null -eq $exited)) {
+        $source='Unavailable'
+        $observer=Get-Variable BapSteamProcessObserver -Scope Script -ErrorAction SilentlyContinue
+        if($observer -and $observer.Value -is [Reflection.MethodInfo]) {
+            try {
+                $snapshot=$observer.Value.Invoke($null,[object[]]@($id))
+                if($snapshot -isnot [object[]] -or $snapshot.Count -ne 4 -or $snapshot[0] -isnot [bool]){throw 'Invalid process observation response.'}
+                if($snapshot[0]) { $exited=$true }
+                else {
+                    if($snapshot[1] -isnot [string] -or ![IO.Path]::IsPathRooted($snapshot[1]) -or $snapshot[2] -isnot [long] -or $snapshot[2] -le 0 -or $snapshot[3] -isnot [uint32]){throw 'Invalid live process observation response.'}
+                    $path=[IO.Path]::GetFullPath($snapshot[1]); $started=[datetime]::FromFileTime($snapshot[2]); $session=[long]$snapshot[3]; $exited=$false
+                }
+                $source='Native'
+            } catch {
+                $cause=$_.Exception.GetBaseException()
+                $field=$cause.GetType().GetField('NativeError',[Reflection.BindingFlags]'Public,Instance')
+                if($field -and $field.FieldType -eq [int]){$nativeError=[Math]::Max(0,[int]$field.GetValue($cause))}
+            }
+        }
+    }
+    $kind=switch($name) {
+        'steam' {'SteamClient'} 'steamwebhelper' {'SteamWebHelper'} 'GameOverlayUI' {'SteamOverlay'}
+        'steamerrorreporter' {'SteamErrorReporter'} 'steamerrorreporter64' {'SteamErrorReporter'}
+        'AstralParty_INT' {'Game'} 'AstralParty_CN' {'Game'} 'BetterAstralParty-Launcher' {'Launcher'}
+        'BetterAstralParty-UpdateHelper' {'UpdateHelper'} default {'Other'}
+    }
+    return [pscustomobject]@{Id=$id;Name=$name;Path=$path;Started=$started;Session=$session;Exited=$exited;Kind=$kind;QuerySource=$source;NativeError=$nativeError}
+}
+
+function Get-BapProcessFact($Observation,$PathMatch,$SessionMatch) {
+    return [pscustomobject]@{pid=$Observation.Id;sessionMatch=$SessionMatch;pathAvailable=[bool]$Observation.Path;pathMatch=$PathMatch;startAvailable=[bool]$Observation.Started;startedUtc=$(if($Observation.Started){$Observation.Started.ToUniversalTime().ToString('o')}else{$null});kind=$Observation.Kind;querySource=$Observation.QuerySource;nativeError=$Observation.NativeError;exitAvailable=($null -ne $Observation.Exited);confirmedExit=($Observation.Exited -eq $true)}
+}
+
 function Get-BapSteamStatus([string]$SteamRoot) {
     $prefix = [IO.Path]::GetFullPath($SteamRoot).TrimEnd('\') + '\'
     $session = [Diagnostics.Process]::GetCurrentProcess().SessionId
@@ -12,19 +56,17 @@ function Get-BapSteamStatus([string]$SteamRoot) {
     catch { throw (New-BapSteamFailure 'Cannot observe Steam processes; nothing changed.' 'ProcessObservationUnavailable' 'ShutdownObservation' $null) }
     foreach ($process in $processes) {
         if ($process.ProcessName -notin @('steam','steamwebhelper','GameOverlayUI','steamerrorreporter','steamerrorreporter64')) { continue }
-        $path = $null; $started = $null; $sameSession = $null; $samePath = $null
-        try { if ($process.HasExited) { continue } } catch { }
-        try { $sameSession = $process.SessionId -eq $session } catch { }
-        try { if ($process.Path) { $path = [IO.Path]::GetFullPath($process.Path); $samePath = $path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) } } catch { }
-        try { $started = $process.StartTime } catch { }
-        # An exit during identity reads is not an unknown live process.
-        try { if ($process.HasExited) { continue } } catch { }
-        $facts += [pscustomobject]@{pid=[int]$process.Id; sessionMatch=$sameSession; pathAvailable=[bool]$path; pathMatch=$samePath; startAvailable=[bool]$started; startedUtc=$(if ($started) { $started.ToUniversalTime().ToString('o') } else { $null })}
+        $observed=Get-BapProcessObservation $process
+        if($observed.Exited -eq $true){continue}
+        $path=$observed.Path; $started=$observed.Started
+        $sameSession=if($null -eq $observed.Session){$null}else{$observed.Session -eq $session}
+        $samePath=if($path){$path.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)}else{$null}
+        $facts += Get-BapProcessFact $observed $samePath $sameSession
         if ($samePath -eq $false) { continue }
-        if (!$path -or $null -eq $sameSession -or !$started) { $unknown = $true; continue }
+        if (!$path -or $null -eq $sameSession -or !$started -or $null -eq $observed.Exited) { $unknown = $true; continue }
         # The selected installation's userdata can be written by another Windows session.
         if (!$sameSession) { $otherSession = $true; continue }
-        $targets += [pscustomobject]@{Id=$process.Id; Path=$path; Started=$started; Session=$session; Name=$process.ProcessName; Client=$true}
+        $targets += [pscustomobject]@{Id=$observed.Id; Path=$path; Started=$started; Session=$session; Name=$observed.Name; Client=$true}
     }
     $state = if ($unknown) { 'Unknown' } elseif ($otherSession) { 'OtherSession' } elseif ($targets.Count) { 'Running' } else { 'Stopped' }
     return [pscustomobject]@{State=$state; Facts=$facts; Targets=$targets}
@@ -34,10 +76,21 @@ function New-BapSteamFailure([string]$Message, [string]$Reason, [string]$Phase, 
     $failure = [InvalidOperationException]::new($Message)
     try {
         $facts = @(); if ($Status) { $facts = @($Status.Facts) }
-        $context = [ordered]@{schema=1; reason=$Reason; phase=$Phase; utc=[datetime]::UtcNow.ToString('o'); observedCount=$facts.Count; omittedCount=[Math]::Max(0, $facts.Count - 48); processes=@($facts | Select-Object -First 48)}
+        $bounded=@($facts|Sort-Object pid|Select-Object -First 48)
+        $legacy=@($bounded|ForEach-Object {[ordered]@{pid=$_.pid;sessionMatch=$_.sessionMatch;pathAvailable=$_.pathAvailable;pathMatch=$_.pathMatch;startAvailable=$_.startAvailable;startedUtc=$_.startedUtc}})
+        $context = [ordered]@{schema=1; reason=$Reason; phase=$Phase; utc=[datetime]::UtcNow.ToString('o'); observedCount=$facts.Count; omittedCount=[Math]::Max(0, $facts.Count - 48); processes=$legacy}
         $json = $context | ConvertTo-Json -Depth 5 -Compress
         if ($json.Length -gt 16384) { $context.processes=@(); $context.omittedCount=$facts.Count; $json=$context | ConvertTo-Json -Depth 5 -Compress }
         $failure.Data['BapSteamDiagnostic'] = $json
+        $metadata=@($bounded|ForEach-Object {
+            $kind=if($_.PSObject.Properties['kind']){$_.kind}else{'Other'}
+            $source=if($_.PSObject.Properties['querySource']){$_.querySource}else{'Managed'}
+            $native=if($_.PSObject.Properties['nativeError']){$_.nativeError}else{0}
+            $available=if($_.PSObject.Properties['exitAvailable']){$_.exitAvailable}else{$false}
+            $exit=if($_.PSObject.Properties['confirmedExit']){$_.confirmedExit}else{$false}
+            [ordered]@{pid=$_.pid;kind=$kind;querySource=$source;nativeError=$native;exitAvailable=$available;confirmedExit=$exit}
+        })
+        $failure.Data['BapSteamObservation']=(@{schema=1;processes=$metadata}|ConvertTo-Json -Depth 4 -Compress)
     } catch { } # A diagnostic failure must not change the maintenance decision.
     return $failure
 }

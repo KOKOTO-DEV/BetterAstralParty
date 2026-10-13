@@ -8,7 +8,7 @@ namespace BetterAstralParty.Updating
 {
     internal static class UpdateHelperProgram
     {
-        internal const string DiagnosticVersion="1.0.0-rc.6";
+        private static string DiagnosticVersion => System.Diagnostics.FileVersionInfo.GetVersionInfo(typeof(UpdateHelperProgram).Assembly.Location).ProductVersion ?? "unknown";
         private static MinimalEventLog? _diagnostics;
         private static DiagnosticPhase _phase=DiagnosticPhase.BootstrapGate;
         private static void BindDiagnostics(string root) {
@@ -20,9 +20,9 @@ namespace BetterAstralParty.Updating
             AppDomain.CurrentDomain.ProcessExit+=(_,__)=>_diagnostics?.Stop(DiagnosticEndReason.ProcessExitCallback);
             try {
                 if (args.Length == 1 && args[0] == "--help") {
-                    Console.WriteLine("BetterAstralParty-UpdateHelper.exe --apply|--recover <game INT root> <bap-stage-id>");
+                    Console.WriteLine("BetterAstralParty-UpdateHelper.exe --apply|--recover <game INT root> <bap-v3-stage-id>");
                     Console.WriteLine("Recovery requires the game/mod launcher closed; preserves backups and verifies signatures again.");
-                    Console.WriteLine("From extracted trusted bootstrap outside the game root: --install-helper <root> <bundle>; --recover-helper <root> <bap-helper-id>.");
+                    Console.WriteLine("From extracted trusted bootstrap outside the game root: --install-helper <root> <bundle>; --recover-helper <root> <bap-v3-helper-id>.");
                     Console.WriteLine("--clean-completed <root> - removes only authenticated duplicate handoff ZIPs; preserves journals/backups."); return 0;
                 }
                 var trust = UpdateTrust.Production();
@@ -33,9 +33,9 @@ namespace BetterAstralParty.Updating
                 var allowed = Path.GetFullPath(fixtureDirectory!).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                 var temporaryDirectory = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                 if (!string.Equals(Path.GetDirectoryName(allowed), temporaryDirectory, StringComparison.OrdinalIgnoreCase)
-                    || !System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(allowed), @"\Abap-helper-fixture-[a-f0-9]{32}\z")) return 65;
+                    || !System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(allowed), @"\Abap-v3-helper-fixture-[a-f0-9]{32}\z")) return 65;
                 using (var boundary = new WindowsFileFence(allowed))
-                using (var marker = boundary.OpenFile(".bap-helper-fixture-root")) {
+                using (var marker = boundary.OpenFile(".bap-v3-helper-fixture-root")) {
                     var expected = System.Text.Encoding.ASCII.GetBytes("BetterAstralParty.HelperFixtureRoot/v1\n");
                     var actual = UpdateTicket.Read(marker, expected.Length);
                     if (actual.Length != expected.Length || UpdateTrust.Hash(actual) != UpdateTrust.Hash(expected)) return 65;

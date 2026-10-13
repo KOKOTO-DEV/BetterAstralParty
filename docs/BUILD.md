@@ -25,11 +25,13 @@ Do not substitute assemblies from an unrelated game or loader version.
 
 ## Plugin, launcher and helper
 
-The launcher embeds the three public, previously signed helper inputs pinned by
-helper-delivery.json. Include helper-bootstrap/current when exporting source.
-Keep their exact bytes: reproducing the launcher requires no private key or
-new signature. The helper component version is independent of the plugin
-version; an authenticated newer installed helper is preserved.
+Stable 1.2.1 starts the protocol-3 installation baseline. The launcher does not
+embed a helper executable or a legacy bootstrap. Build the helper separately;
+the complete installation package delivers it with its verified descriptor and
+signature. Building the plugin, launcher and helper requires no private signing
+key. Producing an approved installation or update package is a separate signing
+and packaging step. The helper component version is independent of the plugin
+version; supported maintenance preserves an authenticated newer helper.
 
 Use the explicit compilation commands below for a public source checkout. They
 build the plugin, launcher and helper without the developer workspace's local

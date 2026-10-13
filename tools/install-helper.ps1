@@ -9,7 +9,7 @@ function Assert-BapHelperBootstrap($Bundle) {
     $bootstrapRoot=Join-Path $Bundle.PackageRoot 'helper-bootstrap'
     $hash=$Bundle.SourceHashes['helper-bootstrap/BetterAstralParty-UpdateHelper.exe']
     try{$verified=$method.Invoke($null,@([string]$bootstrapRoot,[string]$Bundle.Version.Text,[string]$hash))}
-    catch{throw ('자동 업데이트 helper 서명을 확인하지 못했습니다. / Helper bootstrap signature validation failed. '+$_.Exception.GetBaseException().Message)}
+    catch{throw [InvalidOperationException]::new(('자동 업데이트 helper 서명을 확인하지 못했습니다. / Helper bootstrap signature validation failed. '+$_.Exception.GetBaseException().Message), $_.Exception)}
     if($verified -isnot [string] -or $verified -cne $hash){throw 'Helper bootstrap hash response mismatch.'}
 }
 function Install-BapHelperBootstrap($Bundle) {
@@ -20,7 +20,7 @@ function Install-BapHelperBootstrap($Bundle) {
     $bootstrapRoot=Join-Path $Bundle.PackageRoot 'helper-bootstrap'
     $hash=$Bundle.SourceHashes['helper-bootstrap/BetterAstralParty-UpdateHelper.exe']
     try{$result=$method.Invoke($null,@([string]$Bundle.GameRoot,[string]$bootstrapRoot,[string]$Bundle.Version.Text,[string]$hash))}
-    catch{throw ('모드 파일 설치는 완료됐지만 자동 업데이트 준비가 완료되지 않았습니다. 게임을 닫고 기록·백업을 보존하세요. / Mod files committed; updater bootstrap incomplete. Keep the game closed and retain recovery files. '+$_.Exception.GetBaseException().Message)}
+    catch{throw [InvalidOperationException]::new(('모드 파일 설치는 완료됐지만 자동 업데이트 준비가 완료되지 않았습니다. 게임을 닫고 기록·백업을 보존하세요. / Mod files committed; updater bootstrap incomplete. Keep the game closed and retain recovery files. '+$_.Exception.GetBaseException().Message), $_.Exception)}
     if($result -isnot [int]){throw 'Invalid helper bootstrap exit response.'}
     if($result -eq 4){throw '모드 파일 설치는 완료됐지만 기존 helper의 수동 migration이 필요합니다. 기존 helper·설정·기록을 보존했습니다. / Mod files committed; existing helper needs manual migration. Existing helper, settings and records preserved.'}
     if($result -ne 0){throw ('모드 파일 설치는 완료됐지만 자동 업데이트 준비가 완료되지 않았습니다. 기록을 보존하고 복구하세요. / Mod files committed; updater bootstrap incomplete. Retain records for recovery. Exit: '+$result)}
@@ -40,16 +40,32 @@ function Invoke-BapWholeBridge($Bundle, [string]$Method, [string[]]$Additional=@
         $failure=$_.Exception.GetBaseException()
         $reason=$failure.Data['BapRecoveryReason']
         $detail=if($reason -is [string] -and $reason -cmatch '\A[A-Za-z]{1,64}\z'){' ['+$reason+']'}else{''}
-        throw ('Whole migration blocked ('+$Method+')'+$detail+'; retain files/settings/recovery evidence. '+$failure.Message+"`n기록을 삭제하지 말고 Create-Diagnostics.cmd로 진단 ZIP을 생성하세요. / Keep recovery records and create a diagnostics ZIP with Create-Diagnostics.cmd.")
+        throw [InvalidOperationException]::new(('Whole migration blocked ('+$Method+')'+$detail+'; retain files/settings/recovery evidence. '+$failure.Message+"`n기록을 삭제하지 말고 Create-Diagnostics.cmd로 진단 ZIP을 생성하세요. / Keep recovery records and create a diagnostics ZIP with Create-Diagnostics.cmd."), $_.Exception)
     }
 }
 function Assert-BapWholeBridge($Bundle) {
-    $Bundle.WholeObservation=Invoke-BapWholeBridge $Bundle 'ValidateWholeBridge'
+    if($Bundle.Recovery) {
+        $review=$Bundle.Recovery|ConvertTo-Json -Depth 6 -Compress
+        $Bundle.WholeObservation=Invoke-BapWholeBridge $Bundle 'ValidateReviewedWholeBridge' @([string]$review)
+    } else {$Bundle.WholeObservation=Invoke-BapWholeBridge $Bundle 'ValidateWholeBridge'}
     if ($Bundle.WholeObservation -isnot [string]) { throw 'Invalid whole observation response.' }
+}
+function Read-BapVerifiedInstalledState($Bundle) {
+    $result=Invoke-BapWholeBridge $Bundle 'ReadVerifiedInstalledState'
+    $lines=$result.Split([char]10)
+    if($lines.Count -ne 6 -or $lines[0] -cne 'BetterAstralParty.VerifiedInstalledState/v1' -or $lines[1] -cne ('root='+$Bundle.RootIdentity) -or
+        !$lines[2].StartsWith('version=',[StringComparison]::Ordinal) -or $lines[3] -cne 'update-protocol=3' -or $lines[4] -cne 'settings-schema=1' -or $lines[5] -cne '') {throw 'Invalid signed installed-state response.'}
+    $version=Get-BapInstallVersion $lines[2].Substring(8)
+    return @{Version=$version.Text;UpdateProtocol='3';SettingsSchema='1'}
 }
 
 function Start-BapInstallerDiagnostics($Bundle) {
-    try { return (Get-BapInstallVerifier $Bundle).GetType('SteamLauncher').GetMethod('BeginInstallerDiagnostics',[Reflection.BindingFlags]'Public,Static').Invoke($null,@([string]$Bundle.GameRoot,[string]$Bundle.Version.Text)) }
+    $script:BapSteamProcessObserver=$null
+    try {
+        $api=(Get-BapInstallVerifier $Bundle).GetType('SteamLauncher')
+        $script:BapSteamProcessObserver=$api.GetMethod('ReadMaintenanceProcess',[Reflection.BindingFlags]'Public,Static')
+        return $api.GetMethod('BeginInstallerDiagnostics',[Reflection.BindingFlags]'Public,Static').Invoke($null,@([string]$Bundle.GameRoot,[string]$Bundle.Version.Text))
+    }
     catch { Write-Warning 'Minimal local diagnostic setup unavailable.'; return $null }
 }
 function Write-BapInstallerStage($Bundle,[string]$Phase,[string]$Outcome='Begin') {

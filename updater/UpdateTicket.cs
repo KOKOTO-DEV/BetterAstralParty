@@ -22,25 +22,26 @@ namespace BetterAstralParty.Updating
         internal long GameCreation, LauncherCreation;
         internal byte[] Bytes()
         {
-            return Encoding.ASCII.GetBytes("BetterAstralParty.Handoff/v" + (Context.RepositoryId > 0 ? "2" : "1") + "\nroot=" + RootId + "\nstage=" + Stage + "\nstage-id=" + StageId + "\ndescriptor=" + DescriptorHash
+            if (Context.RepositoryId <= 0) throw Bad();
+            return Encoding.ASCII.GetBytes("BetterAstralParty.Handoff/v3\nroot=" + RootId + "\nstage=" + Stage + "\nstage-id=" + StageId + "\ndescriptor=" + DescriptorHash
                 + "\nrepository=" + Context.Repository + "\nchannel=" + Context.Channel + "\ncurrent=" + Context.CurrentVersion + "\ntag=" + Context.ReleaseTag
                 + "\nrelease=" + Context.ReleaseId.ToString(CultureInfo.InvariantCulture) + "\nasset=" + Context.AssetId.ToString(CultureInfo.InvariantCulture)
                 + "\ngame=" + GamePid.ToString(CultureInfo.InvariantCulture) + ":" + GameCreation.ToString(CultureInfo.InvariantCulture) + ":" + GameSession.ToString(CultureInfo.InvariantCulture)
                 + "\nlauncher=" + LauncherPid.ToString(CultureInfo.InvariantCulture) + ":" + LauncherCreation.ToString(CultureInfo.InvariantCulture) + ":" + LauncherSession.ToString(CultureInfo.InvariantCulture) + "\n"
-                + (Context.RepositoryId > 0 ? "repository-id=" + Context.RepositoryId.ToString(CultureInfo.InvariantCulture) + "\ntransition="
-                    + (Context.Transition == null ? "-" : Convert.ToBase64String(Context.Transition.Bytes())) + "\n" : ""));
+                + "repository-id=" + Context.RepositoryId.ToString(CultureInfo.InvariantCulture) + "\ntransition="
+                    + (Context.Transition == null ? "-" : Convert.ToBase64String(Context.Transition.Bytes())) + "\n");
         }
         internal static UpdateTicket Parse(byte[] bytes)
         {
             if (bytes.Length > MaxBytes) throw Bad(); foreach (var value in bytes) if (value > 127 || value == 13) throw Bad();
-            var lines = Encoding.ASCII.GetString(bytes).Split('\n'); var v2 = lines.Length == 16 && lines[0] == "BetterAstralParty.Handoff/v2";
-            if (!v2 && (lines.Length != 14 || lines[0] != "BetterAstralParty.Handoff/v1") || lines[lines.Length - 1] != "") throw Bad();
+            var lines = Encoding.ASCII.GetString(bytes).Split('\n');
+            if (lines.Length != 16 || lines[0] != "BetterAstralParty.Handoff/v3" || lines[lines.Length - 1] != "") throw Bad();
             var keys = new[] { "root=", "stage=", "stage-id=", "descriptor=", "repository=", "channel=", "current=", "tag=", "release=", "asset=", "game=", "launcher=" }; var v = new string[keys.Length];
             for (var i = 0; i < keys.Length; i++) { if (!lines[i + 1].StartsWith(keys[i], StringComparison.Ordinal)) throw Bad(); v[i] = lines[i + 1].Substring(keys[i].Length); }
-            if (!Regex.IsMatch(v[0], @"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !Regex.IsMatch(v[1], @"\Abap-stage-[0-9a-f]{32}\z") || !Regex.IsMatch(v[2], @"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !Regex.IsMatch(v[3], @"\A[0-9A-F]{64}\z")) throw Bad();
+            if (!Regex.IsMatch(v[0], @"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !Regex.IsMatch(v[1], @"\Abap-v3-stage-[0-9a-f]{32}\z") || !Regex.IsMatch(v[2], @"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !Regex.IsMatch(v[3], @"\A[0-9A-F]{64}\z")) throw Bad();
             long release, asset; if (!long.TryParse(v[8], NumberStyles.None, CultureInfo.InvariantCulture, out release) || !long.TryParse(v[9], NumberStyles.None, CultureInfo.InvariantCulture, out asset)) throw Bad();
             long repositoryId = 0; ChannelTransitionIntent? transition = null;
-            if (v2) {
+            {
                 if (!lines[13].StartsWith("repository-id=", StringComparison.Ordinal) || !long.TryParse(lines[13].Substring(14), NumberStyles.None, CultureInfo.InvariantCulture, out repositoryId) || repositoryId <= 0
                     || !lines[14].StartsWith("transition=", StringComparison.Ordinal)) throw Bad();
                 var encoded = lines[14].Substring(11);

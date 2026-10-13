@@ -1,4 +1,5 @@
-﻿param([string]$GameRoot, [switch]$RestartSteam, [uint32]$AccountId = 0, [switch]$UpdateOnly, [string]$RecoveryPlan)
+﻿[CmdletBinding()]
+param([string]$GameRoot, [switch]$RestartSteam, [uint32]$AccountId = 0, [switch]$UpdateOnly, [string]$RecoveryPlan)
 $ErrorActionPreference = 'Stop'
 $env:PSModulePath = Join-Path $PSHOME 'Modules'
 $root = Split-Path -Parent $PSScriptRoot

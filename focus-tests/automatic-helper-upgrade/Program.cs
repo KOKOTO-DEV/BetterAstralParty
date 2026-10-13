@@ -8,7 +8,7 @@ using BetterAstralParty.Updating;
 // Metadata-only plugin fixture; its installed copy and all PE images are never executed.
 namespace BetterAstralParty {
     internal static class Plugin {
-        public const string Guid = "kr.betterastralparty.mod", Version = "1.0.0", UpdateProtocol = "2", SettingsSchema = "1";
+        public const string Guid = "kr.betterastralparty.mod", Version = "1.2.1", UpdateProtocol = "3", SettingsSchema = "1";
     }
 }
 
@@ -45,7 +45,7 @@ internal static class Program {
         BitConverter.GetBytes((ushort)0x8664).CopyTo(image, 132); image[511] = marker;
         HelperDescriptor.Executable(image); return image;
     }
-    private static string Seed(Payload payload, string version = "1.0.0", int protocol = 1, byte marker = 1,
+    private static string Seed(Payload payload, string version = "1.2.1", int protocol = 3, byte marker = 1,
         bool channels = true, bool water = true, Action<string>? installBoundary = null) {
         var root = Path.Combine(_root, "c" + (++_roots));
         if (Directory.Exists(root)) throw new IOException("Fresh scratch root required");
@@ -53,7 +53,7 @@ internal static class Program {
         Directory.CreateDirectory(Full(root, "BepInEx/plugins/OtherMod"));
         Directory.CreateDirectory(Full(root, "BepInEx/config"));
         var plugin = File.ReadAllBytes(Assembly.GetExecutingAssembly().Location);
-        Check(InstalledPluginMetadata.Read(plugin).Version == "1.0.0", "fixture plugin metadata is authentic");
+        Check(InstalledPluginMetadata.Read(plugin).Version == "1.2.1", "fixture plugin metadata is authentic");
         var owned = InstallReceipt.Owned.ToDictionary(path => path, path => path == UpdateTrust.PluginPath ? plugin : path == "BetterAstralParty-Launcher.exe" ? Image(9) : Bytes("owned fixture: " + path));
         foreach (var file in owned) File.WriteAllBytes(Full(root, file.Key), file.Value);
         File.WriteAllBytes(Full(root, "AstralParty_INT.exe"), Image(10));
@@ -63,13 +63,13 @@ internal static class Program {
         File.WriteAllBytes(Full(root, "BepInEx/config/OtherMod.cfg"), Bytes("other configuration remains byte-exact"));
         File.WriteAllBytes(Full(root, "retained-install-backup.keep"), Bytes("retained backup remains byte-exact"));
         using (var fence = new WindowsFileFence(root)) {
-            var history = new ReceiptChannelState(fence.RootIdentity.Text, "Stable", Guid.NewGuid().ToString("N"), ReleaseFeedPolicy.StableRepositoryId, "1.0.0", new string('A', 64), ReleaseFeedPolicy.BetaRepositoryId, "1.0.0-rc.6", new string('B', 64));
-            var receipt = "{\"schema\":1,\"owner\":\"kr.betterastralparty.mod\",\"loaderBefore\":false,\"files\":[" + string.Join(",", owned.Select(file => "{\"path\":\"" + file.Key + "\",\"sha256\":\"" + UpdateTrust.Hash(file.Value) + "\"}")) + "]" + (channels ? ",\"channelState\":\"" + history.Encoded + "\"" : "") + "}";
+            var history = new ReceiptChannelState(fence.RootIdentity.Text, "Stable", Guid.NewGuid().ToString("N"), ReleaseFeedPolicy.StableRepositoryId, "1.2.1", new string('A', 64), ReleaseFeedPolicy.BetaRepositoryId, "1.2.1", new string('B', 64));
+            var receipt = "{\"schema\":1,\"baseline\":\"1.2.1\",\"owner\":\"kr.betterastralparty.mod\",\"loaderBefore\":false,\"files\":[" + string.Join(",", owned.Select(file => "{\"path\":\"" + file.Key + "\",\"sha256\":\"" + UpdateTrust.Hash(file.Value) + "\"}")) + "]" + (channels ? ",\"channelState\":\"" + history.Encoded + "\"" : "") + "}";
             File.WriteAllBytes(Full(root, InstallReceipt.Path), Bytes(receipt));
-            if (water) File.WriteAllBytes(Full(root, UpdateTransaction.HighWaterPath), Bytes("BetterAstralParty.HighWater/v1\nroot=" + fence.RootIdentity.Text + "\nversion=1.0.0\ndescriptor=" + new string('C', 64) + "\n"));
+            if (water) File.WriteAllBytes(Full(root, UpdateTransaction.HighWaterPath), Bytes("BetterAstralParty.HighWater/v1\nroot=" + fence.RootIdentity.Text + "\nversion=1.2.1\ndescriptor=" + new string('C', 64) + "\n"));
             var image = Image(marker); var descriptor = HelperDescriptor.Prepare(version, image, protocol);
-            Check(HelperDelivery.Install(fence, descriptor, payload.Signature(descriptor), image, payload.Trust, installBoundary) == HelperInstallResult.Installed, "authentic old helper delivery committed");
-            Check(HelperDelivery.Fingerprint(fence, payload.Trust) == UpdateTrust.Hash(image), "old signed fingerprint verified");
+            Check(HelperDelivery.Install(fence, descriptor, payload.Signature(descriptor), image, payload.Trust, installBoundary) == HelperInstallResult.Installed, "authenticated baseline helper delivery committed");
+            Check(HelperDelivery.Fingerprint(fence, payload.Trust) == UpdateTrust.Hash(image), "baseline signed fingerprint verified");
         }
         return root;
     }
@@ -92,7 +92,7 @@ internal static class Program {
             Check(file.Identity.Text == before.Identities[item.Key], "retained object identity preserved " + item.Key);
         }
     }
-    private static void Run(string root, Payload payload, byte[]? image = null, string version = "1.1.0", int protocol = 2,
+    private static void Run(string root, Payload payload, byte[]? image = null, string version = "1.2.2", int protocol = 3,
         Action<string>? boundary = null, Action<string>? native = null, byte[]? signature = null) {
         image ??= Image(2); var descriptor = HelperDescriptor.Prepare(version, image, protocol);
         using var lease = new UpdateLaunchGate.Lease(root, fence => {
@@ -107,10 +107,10 @@ internal static class Program {
     private static void VerifyUpgraded(string root, Payload payload, Snapshot before) {
         Preserved(root, before);
         using (var fence = new WindowsFileFence(root)) {
-            Check(HelperDelivery.Fingerprint(fence, payload.Trust, 2) == UpdateTrust.Hash(Image(2)), "new signed protocol2 helper authenticated");
+            Check(HelperDelivery.Fingerprint(fence, payload.Trust, 3) == UpdateTrust.Hash(Image(2)), "new signed protocol3 helper authenticated");
             Check(!AutomaticHelperUpgrade.Pending(fence) && !HelperDelivery.PendingInstall(fence), "both durable journals committed");
             UpdateLaunchGate.Check(fence); Check(true, "ordinary launch check accepts recovered state");
-            var archive = Directory.GetDirectories(root, "bap-helperauto-*").Single(path => File.Exists(Path.Combine(path, "committed")));
+            var archive = Directory.GetDirectories(root, "bap-v3-helperauto-*").Single(path => File.Exists(Path.Combine(path, "committed")));
             foreach (var pair in new[] { (HelperDescriptor.Image, "old-image"), (HelperDelivery.Receipt, "old-receipt") }) {
                 using var old = fence.OpenFile(Path.GetFileName(archive) + "/" + pair.Item2);
                 Check(old.Hash() == before.Hashes[pair.Item1], "exact old helper archive retained " + pair.Item2);
@@ -161,49 +161,49 @@ internal static class Program {
         }
     }
     private static void Refusals(Payload payload) {
-        var cases = new[] { "same-version-different-image", "signature-tamper", "image-tamper", "protocol-one", "unknown-helper", "unreceipted-helper", "owned8-tamper", "channel-root-mismatch", "highwater-tamper", "pending-reinstall", "pending-operation", "pending-helper", "pending-whole", "pending-transaction", "malformed-helper-directory", "excessive-helper-directories", "linked-helper", "linked-owned-plugin", "busy-helper", "busy-operation-lock" };
+        var cases = new[] { "same-version-different-image", "signature-tamper", "image-tamper", "protocol-one", "protocol-two", "unknown-helper", "unreceipted-helper", "owned8-tamper", "channel-root-mismatch", "highwater-tamper", "pending-reinstall", "pending-operation", "pending-helper", "pending-whole", "pending-transaction", "malformed-helper-directory", "excessive-helper-directories", "linked-helper", "linked-owned-plugin", "busy-helper", "busy-operation-lock" };
         foreach (var name in cases) Case(name, _ => {
-            var root = Seed(payload, version: name == "same-version-different-image" ? "1.1.0" : "1.0.0");
-            var image = Image(2); byte[]? signature = null; var protocol = name == "protocol-one" ? 1 : 2;
+            var root = Seed(payload, version: name == "same-version-different-image" ? "1.2.2" : "1.2.1");
+            var image = Image(2); byte[]? signature = null; var protocol = name == "protocol-one" ? 1 : name == "protocol-two" ? 2 : 3;
             FileStream? busy = null;
             switch (name) {
-                case "signature-tamper": signature = payload.Signature(HelperDescriptor.Prepare("1.1.0", image, 2)); var envelope = DetachedSignature.Parse(signature); envelope.Signature[0] ^= 1; signature = new DetachedSignature(envelope.KeyId, envelope.Signature).Bytes(); break;
-                case "image-tamper": signature = payload.Signature(HelperDescriptor.Prepare("1.1.0", Image(3), 2)); break;
+                case "signature-tamper": signature = payload.Signature(HelperDescriptor.Prepare("1.2.2", image, 3)); var envelope = DetachedSignature.Parse(signature); envelope.Signature[0] ^= 1; signature = new DetachedSignature(envelope.KeyId, envelope.Signature).Bytes(); break;
+                case "image-tamper": signature = payload.Signature(HelperDescriptor.Prepare("1.2.2", Image(3), 3)); break;
                 case "unknown-helper": File.WriteAllBytes(Full(root, HelperDescriptor.Image), Image(99)); break;
                 case "unreceipted-helper": File.Move(Full(root, HelperDelivery.Receipt), Full(root, "unreceipted-backup.keep")); break;
                 case "owned8-tamper": File.AppendAllText(Full(root, "AstralParty-Vanilla.cmd"), "tamper"); break;
                 case "channel-root-mismatch": {
                     using var fence = new WindowsFileFence(root); var text = File.ReadAllText(Full(root, InstallReceipt.Path)); var receipt = InstallReceipt.Parse(Bytes(text));
-                    var wrong = new ReceiptChannelState("00000000:0000000000000000", "Stable", receipt.Channels!.Operation, ReleaseFeedPolicy.StableRepositoryId, "1.0.0", new string('A', 64), 0, null, "-");
+                    var wrong = new ReceiptChannelState("00000000:0000000000000000", "Stable", receipt.Channels!.Operation, ReleaseFeedPolicy.StableRepositoryId, "1.2.1", new string('A', 64), 0, null, "-");
                     File.WriteAllBytes(Full(root, InstallReceipt.Path), Bytes(text.Replace(receipt.Channels.Encoded, wrong.Encoded))); break;
                 }
                 case "highwater-tamper": File.WriteAllText(Full(root, UpdateTransaction.HighWaterPath), "invalid water"); break;
-                case "pending-reinstall": File.WriteAllText(Full(root, "BetterAstralParty.reinstall.pending"), "retained pending reinstall"); break;
+                case "pending-reinstall": File.WriteAllText(Full(root, "BetterAstralParty.reinstall-v3.pending"), "retained pending reinstall"); break;
                 case "pending-operation": {
                     using var fence = new WindowsFileFence(root);
-                    var fault = new UpdateFault { Root = fence.RootIdentity.Text, Operation = Guid.NewGuid().ToString("N"), Phase = FaultPhase.Preparation, Reason = FaultReason.Interrupted, Context = new UpdateContext(ReleaseFeedPolicy.StableRepository, "Stable", "1.0.0", "1.1.0", 1, 2, UpdateTrust.PlatformId) };
+                    var fault = new UpdateFault { Root = fence.RootIdentity.Text, Operation = Guid.NewGuid().ToString("N"), Phase = FaultPhase.Preparation, Reason = FaultReason.Interrupted, Context = new UpdateContext(ReleaseFeedPolicy.StableRepository, "Stable", "1.2.1", "1.2.2", 1, 2, UpdateTrust.PlatformId) };
                     File.WriteAllBytes(Full(root, UpdateFaults.OperationPath), fault.Bytes()); break;
                 }
                 case "pending-helper": {
-                    using var fence = new WindowsFileFence(root); var work = "bap-helper-" + Guid.NewGuid().ToString("N"); fence.CreatePrivateDirectory(work);
+                    using var fence = new WindowsFileFence(root); var work = "bap-v3-helper-" + Guid.NewGuid().ToString("N"); fence.CreatePrivateDirectory(work);
                     HelperDelivery.Write(fence, work + "/plan", Bytes("pending helper evidence - must not adopt")); break;
                 }
                 case "malformed-helper-directory": {
-                    using var fence = new WindowsFileFence(root); fence.CreatePrivateDirectory("bap-helper-malformed"); break;
+                    using var fence = new WindowsFileFence(root); fence.CreatePrivateDirectory("bap-v3-helper-malformed"); break;
                 }
                 case "excessive-helper-directories": {
                     using var fence = new WindowsFileFence(root);
-                    for (var i = 0; i < 64; i++) fence.CreatePrivateDirectory("bap-helper-" + Guid.NewGuid().ToString("N"));
-                    Check(Directory.GetDirectories(root, "bap-helper-*").Length == 65, "fixture exceeds the bounded helper-journal inventory"); break;
+                    for (var i = 0; i < 65; i++) fence.CreatePrivateDirectory("bap-v3-helper-" + Guid.NewGuid().ToString("N"));
+                    Check(Directory.GetDirectories(root, "bap-v3-helper-*").Length == 66, "fixture exceeds 64 active journals; committed history is excluded"); break;
                 }
                 case "pending-whole": {
-                    using var fence = new WindowsFileFence(root); var work = "bap-helperbridge-" + Guid.NewGuid().ToString("N"); fence.CreatePrivateDirectory(work);
+                    using var fence = new WindowsFileFence(root); var work = "bap-v3-helperbridge-" + Guid.NewGuid().ToString("N"); fence.CreatePrivateDirectory(work);
                     using var file = fence.OpenFile(work + "/plan", true, true); var bytes = Bytes("unresolved whole migration evidence"); file.Stream.Write(bytes); file.Flush(); break;
                 }
                 case "pending-transaction": {
-                    using var fence = new WindowsFileFence(root); var work = "bap-txn-" + Guid.NewGuid().ToString("N"); var stage = "bap-stage-" + Guid.NewGuid().ToString("N");
+                    using var fence = new WindowsFileFence(root); var work = "bap-v3-txn-" + Guid.NewGuid().ToString("N"); var stage = "bap-v3-stage-" + Guid.NewGuid().ToString("N");
                     var workId = fence.CreatePrivateDirectory(work).Text; var stageId = fence.CreatePrivateDirectory(stage).Text;
-                    var lines = new List<string> { "BetterAstralParty.Transaction/v1", "root=" + fence.RootIdentity.Text, "work=" + work, "work-id=" + workId, "stage=" + stage, "stage-id=" + stageId, "descriptor=" + new string('A', 64), "receipt=fixture", "count=10" };
+                    var lines = new List<string> { "BetterAstralParty.Transaction/v3", "root=" + fence.RootIdentity.Text, "work=" + work, "work-id=" + workId, "stage=" + stage, "stage-id=" + stageId, "descriptor=" + new string('A', 64), "receipt=fixture", "count=10" };
                     lines.AddRange(Enumerable.Repeat("retained entry", 10)); lines.Add("");
                     using var file = fence.OpenFile(work + "/plan", true, true); file.Stream.Write(Bytes(string.Join("\n", lines))); file.Flush(); break;
                 }
@@ -231,12 +231,23 @@ internal static class Program {
             if (!_root.StartsWith(allowed, StringComparison.OrdinalIgnoreCase) || _root.Length > 130 || Directory.Exists(_root)) throw new ArgumentException("Fresh short artifact scratch root required");
             Directory.CreateDirectory(_root);
             using var payload = new Payload();
-            foreach (var setup in new[] { "protocol1", "protocol2", "legacy-receipt-no-water" }) Case("normal " + setup, observed => {
-                var legacy = setup == "legacy-receipt-no-water"; var root = Seed(payload, protocol: setup == "protocol2" ? 2 : 1, channels: !legacy, water: !legacy);
-                var before = Capture(root); Run(root, payload, boundary: observed.Add); VerifyUpgraded(root, payload, before);
+            Case("supported baseline protocol3 replacement", observed => {
+                var root = Seed(payload); var before = Capture(root);
+                Run(root, payload, boundary: observed.Add); VerifyUpgraded(root, payload, before);
+            });
+            foreach (var field in new[] { "baseline", "channelState" }) Case("reject prior receipt missing " + field, _ => {
+                var root = Seed(payload); var original = File.ReadAllText(Full(root, InstallReceipt.Path));
+                var receipt = InstallReceipt.Parse(Bytes(original));
+                var missing = field == "baseline" ? original.Replace(",\"baseline\":\"1.2.1\"", "", StringComparison.Ordinal)
+                    : original.Replace(",\"channelState\":\"" + receipt.Channels!.Encoded + "\"", "", StringComparison.Ordinal);
+                Check(missing != original, "legacy receipt mutation exercised");
+                Reject(() => InstallReceipt.Parse(Bytes(missing)), "legacy receipt cannot enter new baseline");
+                File.WriteAllBytes(Full(root, InstallReceipt.Path), Bytes(missing));
+                var before = Capture(root); Reject(() => Run(root, payload), "unsupported legacy installation is not upgraded");
+                Preserved(root, before, false); Check(Capture(root).Hashes.Count == before.Hashes.Count, "legacy refusal creates no migration files");
             });
             foreach (var setup in new[] { "already-current", "newer-helper" }) Case(setup, _ => {
-                var root = Seed(payload, version: setup == "newer-helper" ? "1.2.0" : "1.1.0", protocol: 2, marker: setup == "newer-helper" ? (byte)3 : (byte)2);
+                var root = Seed(payload, version: setup == "newer-helper" ? "1.3.0" : "1.2.2", protocol: 3, marker: setup == "newer-helper" ? (byte)3 : (byte)2);
                 var before = Capture(root); Run(root, payload); Preserved(root, before, false); Check(Capture(root).Hashes.Count == before.Hashes.Count, "no-op creates no journal");
             });
             Recoveries(payload); Refusals(payload);

@@ -53,7 +53,8 @@ internal static class ModUi
         _lastFrame = Time.frameCount;
         try
         {
-            Plugin.Updates.Tick(DateTimeOffset.UtcNow, GameUi.HomeAvailable);
+            Plugin.Updates.InstalledChannel(Plugin.Automatic.Snapshot.InstalledChannel);
+            Plugin.Updates.Tick(DateTimeOffset.UtcNow, GameUi.HomeAvailable && Plugin.Automatic.Status != AutomaticUpdateStatus.CheckingInstallation);
             Plugin.UpdateSession?.Poll();
             UpdateDiscoveryBridge.Apply(Plugin.Updates, Plugin.Automatic, Plugin.Version);
             Plugin.PollUpdatePreferences(); Plugin.Automatic.Tick(DateTimeOffset.UtcNow);
@@ -764,7 +765,10 @@ internal static class ModUi
                 Refresh(); _helpAction = null; SetHelp(action); return;
             case "AutoDownload": Plugin.AutoDownload.Value = !Plugin.AutoDownload.Value; break;
             case "AfterExit": Plugin.ApplyAfterExit.Value = !Plugin.ApplyAfterExit.Value; break;
-            case "UpdateGet": if (Plugin.Automatic.CanReactivate) Plugin.Automatic.Reactivate(); else if (Plugin.Automatic.CanRecheck) Plugin.Automatic.Recheck(); else Plugin.Automatic.Download(DateTimeOffset.UtcNow); Refresh(); _helpAction = null; SetHelp(action); return;
+            case "UpdateGet":
+                if (UpdateNotificationUi.CanConfirmTransition) { UpdateNotificationUi.BeginTransition(); ClosePanel(true); return; }
+                if (Plugin.Automatic.CanReactivate) Plugin.Automatic.Reactivate(); else if (Plugin.Automatic.CanRecheck) Plugin.Automatic.Recheck(); else Plugin.Automatic.Download(DateTimeOffset.UtcNow);
+                Refresh(); _helpAction = null; SetHelp(action); return;
             case "UpdateCancel": Plugin.Automatic.Cancel(); Refresh(); _helpAction = null; SetHelp(action); return;
             case "Enabled": Plugin.Enabled.Value = !Plugin.Enabled.Value; break;
             case "Details": Plugin.ShowDetails.Value = !Plugin.ShowDetails.Value; break;
@@ -814,7 +818,7 @@ internal static class ModUi
             if (action is "UpdateChannel" or "UpdateCheck" or "UpdateDownload")
             {
                 var available = action == "UpdateDownload" || Plugin.Updates.TryDownloadPage(out _);
-                var state = action == "UpdateChannel" ? ModText.Text(Plugin.Updates.Channel == ReleaseChannel.Beta ? "베타 포함" : "안정판")
+                var state = action == "UpdateChannel" ? ModText.Text(Plugin.Updates.Channel == ReleaseChannel.Beta ? "베타" : "안정판")
                     : action == "UpdateCheck" ? ModText.UpdateStatus(Plugin.Updates.Result.Status) : "";
                 ToggleBackgrounds[action].Set("grayed", action != "UpdateChannel" && !available);
                 NativeUi.StyleTitle(button, ModText.Text(MenuLayout.Help(action).Title) + (state.Length == 0 ? "" : ": " + state), 22);
@@ -822,9 +826,10 @@ internal static class ModUi
             }
             if (action is "UpdateGet" or "UpdateCancel")
             {
-                var available = action == "UpdateGet" ? Plugin.Automatic.CanDownload || Plugin.Automatic.CanReactivate || Plugin.Automatic.CanRecheck : Plugin.Automatic.CanCancel;
+                var transition = action == "UpdateGet" && UpdateNotificationUi.CanConfirmTransition;
+                var available = action == "UpdateGet" ? transition || Plugin.Automatic.CanDownload || Plugin.Automatic.CanReactivate || Plugin.Automatic.CanRecheck : Plugin.Automatic.CanCancel;
                 button.Set("grayed", !available); ToggleBackgrounds[action].Set("grayed", !available);
-                NativeUi.StyleTitle(button, (action == "UpdateGet" && Plugin.Automatic.CanReactivate ? ModText.Korean ? "다시 사용" : "Re-enable Updates" : action == "UpdateGet" && Plugin.Automatic.CanRecheck ? ModText.Korean ? "상태 다시 확인" : "Recheck Installation" : ModText.Text(MenuLayout.Help(action).Title)) + ": " + ModText.AutomaticStatus(Plugin.Automatic.Status), 20);
+                NativeUi.StyleTitle(button, (transition ? ModText.ChannelTransitionTitle : action == "UpdateGet" && Plugin.Automatic.CanReactivate ? ModText.Korean ? "다시 사용" : "Re-enable Updates" : action == "UpdateGet" && Plugin.Automatic.CanRecheck ? ModText.Korean ? "상태 다시 확인" : "Recheck Installation" : ModText.Text(MenuLayout.Help(action).Title)) + ": " + ModText.AutomaticStatus(Plugin.Automatic.Status), 20);
                 continue;
             }
             if (action == "Language")

@@ -12,6 +12,7 @@ foreach($name in @('mscorlib.dll','System.dll','System.Core.dll','System.Securit
 $compilerArguments+=@(Get-ChildItem -LiteralPath (Join-Path $root 'updater') -File -Filter '*.cs'|Sort-Object Name|ForEach-Object FullName)
 $compilerArguments+=@(Get-ChildItem -LiteralPath (Join-Path $root 'src/Observability') -File -Filter '*.cs'|Sort-Object Name|ForEach-Object FullName)
 $compilerArguments+=Join-Path $root 'diagnostics/MinimalDiagnosticProjection.cs'
+$compilerArguments+= & (Join-Path $PSScriptRoot 'build-executable-identity.ps1') -OutputDirectory $destination -Role Helper
 & (Join-Path $dotnetRootPath 'dotnet.exe') $compiler @compilerArguments
 if($LASTEXITCODE -ne 0){throw 'Helper build failed.'}
 

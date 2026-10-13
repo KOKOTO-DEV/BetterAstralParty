@@ -12,11 +12,13 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+$env:DOTNET_GENERATE_ASPNET_CERTIFICATE='false'
 $projectRoot=[IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $artifactRoot=Join-Path $projectRoot 'artifacts'
 $buildRoot=Join-Path $artifactRoot ('wct-build-'+[Guid]::NewGuid().ToString('N'))
 $scratch=Join-Path $artifactRoot ('wct-'+[Guid]::NewGuid().ToString('N'))
-foreach($path in @($buildRoot,$scratch)){
+$archiveScratch=Join-Path $artifactRoot ('wct-'+[Guid]::NewGuid().ToString('N'))
+foreach($path in @($buildRoot,$scratch,$archiveScratch)){
     if((Split-Path -Parent $path) -cne $artifactRoot -or (Test-Path -LiteralPath $path)){throw 'Fresh direct artifact output required.'}
 }
 $leases=[Collections.Generic.List[IDisposable]]::new()
@@ -41,7 +43,7 @@ function Part($Ast,[type]$Type,[string]$Start){
 }
 try{
     $packages=@(
-        @{Path=[IO.Path]::GetFullPath($StablePackageRoot);Hash=$StableManifestSha256;Channel='Stable';Version='1.1.2'},
+        @{Path=[IO.Path]::GetFullPath($StablePackageRoot);Hash=$StableManifestSha256;Channel='Stable';Version=$null},
         @{Path=[IO.Path]::GetFullPath($BetaPackageRoot);Hash=$BetaManifestSha256;Channel='Beta';Version=$null}
     )
     foreach($package in $packages){
@@ -49,6 +51,7 @@ try{
         $bytes=Read-Held (Join-Path $package.Path 'package-manifest.json') $package.Hash
         $manifest=[Text.Encoding]::UTF8.GetString($bytes)|ConvertFrom-Json
         if($package.Version -and $manifest.version -cne $package.Version){throw 'Package version mismatch.'}
+        if([version]($manifest.version -split '-')[0] -lt [version]'1.2.1'){throw 'A new-baseline complete package is required; previous installers are not a supported seed.'}
         $package.Version=$manifest.version
         $required=@('artifacts/BetterAstralParty.dll','artifacts/BetterAstralParty-Launcher.exe','artifacts/BetterAstralParty.compatibility.json',
             'tools/AstralParty-Vanilla.cmd','tools/BetterAstralParty-Mod.cmd','tools/BetterAstralParty-Steam.ps1','tools/check-compatibility.ps1','tools/steam-shortcut.ps1',
@@ -83,7 +86,10 @@ try{
     )
     $backupTargets=Part $uninstall ([Management.Automation.Language.AssignmentStatementAst]) '$backupTargets = @($targets)'
     $absentEntry=Part $uninstall ([Management.Automation.Language.IfStatementAst]) 'if (!$entry.Existed)'
-    $absentGuard=[scriptblock]::Create('param($Memory,$Entries) function Test-Path {param($LiteralPath) return $Memory.ContainsKey($LiteralPath)} $rollbackExpected=@{}; foreach($entry in $Entries) {'+$absentEntry.Extent.Text+'}; return $rollbackExpected')
+    $absentGuard=[scriptblock]::Create('param($Memory,$Entries) function Test-Path {param($LiteralPath) return $Memory.ContainsKey($LiteralPath)} '+
+        '$removalLease=[pscustomobject]@{Memory=$Memory}; $removalLease|Add-Member -MemberType ScriptMethod -Name Remove -Value {param([string]$Target) '+
+        'if($this.Memory.ContainsKey($Target)){throw "File appeared during uninstall; retained"}}; '+
+        '$rollbackExpected=@{}; foreach($entry in $Entries) {'+$absentEntry.Extent.Text+'}; return $rollbackExpected')
     $policy=Read-Ast (Join-Path $PSScriptRoot 'install-policy.ps1')
     $sameVersion=Part $policy ([Management.Automation.Language.IfStatementAst]) 'if((Compare-BapInstallVersion $Bundle.Version $current) -eq 0'
     $sameVersionGuard=[scriptblock]::Create('param($Bundle,$current,$samePayload) '+$sameVersion.Extent.Text)
@@ -123,6 +129,9 @@ public sealed class BapWholeVirtualType {
     readonly BapWholeVirtualAssembly owner;
     public BapWholeVirtualType(BapWholeVirtualAssembly value) { owner = value; }
     public BapWholeVirtualMethod GetMethod(string name, BindingFlags flags) {
+        // This planner deliberately simulates the frozen older package inspector.
+        // New signed/native package-aware checks stay covered by the native fixture.
+        if(name == "ValidatePartialRemovalWithPackage") return null;
         if(name != "ValidateInstalledReceipt" && name != "ValidatePartialRemoval") throw new Exception("Unexpected virtual method");
         return new BapWholeVirtualMethod(owner, name);
     }
@@ -147,6 +156,8 @@ public sealed class BapWholeVirtualMethod {
     if($LASTEXITCODE -ne 0){throw 'Whole-channel fixture build failed.'}
     & $dotnet (Join-Path $buildRoot 'bin/WholeChannelTransitionFixture.dll') $scratch $artifactRoot $packages[0].Path $packages[1].Path @automaticArguments
     if($LASTEXITCODE -ne 0){throw 'Signed whole/native fixture failed; scratch evidence retained.'}
+    & $dotnet (Join-Path $buildRoot 'bin/WholeChannelTransitionFixture.dll') $archiveScratch $artifactRoot $packages[0].Path $packages[1].Path 'archive-only'
+    if($LASTEXITCODE -ne 0){throw 'Terminal archive/native fixture failed; scratch evidence retained.'}
     # Assembly.Load does not run Main. Native maintenance calls below are limited to the new scratch root.
     $verifier=[Reflection.Assembly]::Load([byte[]](Read-Held (Join-Path $packages[1].Path 'artifacts/BetterAstralParty-Launcher.exe')))
     $virtualVerifier=[BapWholeVirtualAssembly]::new($verifier)
@@ -230,21 +241,25 @@ public sealed class BapWholeVirtualMethod {
             $pluginRow.Existed=$false;$pluginRow.Hash=$null
             $coreRefused=& {
                 function Read-InstallRecoveryJournal{return $badJournal}
-                try{$null=Get-BapCleanReinstallPlan $bundle;return $false}catch{return $_.Exception.GetBaseException().Message -ceq 'Removal backup must contain the former core files.'}
+                try{$null=Get-BapCleanReinstallPlan $bundle;return $false}catch{
+                    $reason=$_.Exception.GetBaseException().Message
+                    return $reason -ceq 'Missing former plugin requires signed installed-proof support; use a current complete package.' -or
+                        $reason -ceq 'Unexpected recovery backup retained.'
+                }
             }
-            if(!$coreRefused){throw 'Clean-reinstall core-row predicate accepted an absent plugin.'};$count++
+            if(!$coreRefused){throw 'Frozen old inspector must refuse missing-core recovery without signed installed-proof support.'};$count++
             $backupHashes=@{};foreach($file in Get-ChildItem -LiteralPath $selectedBackup -File -Recurse){$backupHashes[$file.FullName]=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash}
             $gameHashes=@{};foreach($file in Get-ChildItem -LiteralPath $selectedRoot -File -Recurse){$gameHashes[$file.FullName]=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash}
             foreach($property in $Proof.Preserved.PSObject.Properties){if($gameHashes[(Join-Path $selectedRoot $property.Name)] -cne $property.Value){throw 'Shared/other-mod scratch file changed before history retirement.'};$count++}
-            $waterPath=Join-Path $selectedRoot 'BetterAstralParty.update.version';$waterBytes=[IO.File]::ReadAllBytes($waterPath)
+            $waterPath=Join-Path $selectedRoot 'BetterAstralParty.update-v3.version';$waterBytes=[IO.File]::ReadAllBytes($waterPath)
             if([Text.Encoding]::ASCII.GetString($waterBytes) -cne ($Proof.Water -join "`n")){throw 'Native retained watermark bytes mismatch.'}
             $lock=Join-Path $selectedBackup 'pending.json.lock'
             Assert-InstallTarget $selectedBackup $lock
             $stream=[IO.File]::Open($lock,'CreateNew','Write','None');try{$stream.Flush($true)}finally{$stream.Dispose()}
             Move-BapReinstallHistory $bundle $plan $null
-            if((Test-Path -LiteralPath $waterPath) -or (Test-Path -LiteralPath (Join-Path $selectedRoot 'BetterAstralParty.reinstall.pending'))){throw 'Scratch history retirement left active watermark/intent.'};$count++
-            $archives=@(Get-ChildItem -LiteralPath $selectedRoot -File -Filter 'BetterAstralParty.update.version.uninstalled-*')
-            $records=@(Get-ChildItem -LiteralPath $selectedRoot -File -Filter 'BetterAstralParty.reinstall.completed-*')
+            if((Test-Path -LiteralPath $waterPath) -or (Test-Path -LiteralPath (Join-Path $selectedRoot 'BetterAstralParty.reinstall-v3.pending'))){throw 'Scratch history retirement left active watermark/intent.'};$count++
+            $archives=@(Get-ChildItem -LiteralPath $selectedRoot -File -Filter 'BetterAstralParty.update-v3.version.uninstalled-*')
+            $records=@(Get-ChildItem -LiteralPath $selectedRoot -File -Filter 'BetterAstralParty.reinstall-v3.completed-*')
             if($archives.Count -ne 1 -or $records.Count -ne 1 -or (Get-FileHash -LiteralPath $archives[0].FullName -Algorithm SHA256).Hash -cne $plan.WaterHash){throw 'Scratch retired history not preserved exactly.'};$count++
             $record=Get-Content -LiteralPath $records[0].FullName -Raw|ConvertFrom-Json
             if($record.schema -ne 1 -or $record.purpose -cne 'clean-reinstall-generation' -or $record.root -cne $Proof.Root -or $record.fromVersion -cne $plan.Version -or $record.toVersion -cne $Package.Version -or $record.packageManifestSha256 -cne $Package.Hash -or $record.backupId -cne $Proof.BackupId -or $record.proofSha256 -cne $Proof.JournalSha256 -or $record.waterSha256 -cne $plan.WaterHash -or $record.archive -cne $archives[0].Name){throw 'Scratch generation record binding mismatch.'};$count++
@@ -264,8 +279,9 @@ public sealed class BapWholeVirtualMethod {
     }
     $result=[ordered]@{Passed=$true;Scratch=$scratch;Build=$buildRoot;StableManifestSha256=$StableManifestSha256;BetaManifestSha256=$BetaManifestSha256;
         AutomaticUpdateZipSha256=$UpdateZipSha256;
-        PredicateAssertions=$checks;Native=(Get-Content -LiteralPath (Join-Path $scratch 'native-results.json') -Raw|ConvertFrom-Json);InputSha256=$pins;
-        Scope='Signed/native scratch whole migration and optional automatic Apply/recovery; exact production virtual removal clauses, actual completed removal journal/clean-reinstall validation and held-handle history retirement only in the new scratch root. Core-row rejection substitutes only the already validated journal result. Automatic checks copy only signed public game/loader/catalog compatibility inputs. No real installation/removal, Steam/game execution, production private key or network.'}
+        PredicateAssertions=$checks;Native=(Get-Content -LiteralPath (Join-Path $scratch 'native-results.json') -Raw|ConvertFrom-Json);
+        ArchiveNative=(Get-Content -LiteralPath (Join-Path $archiveScratch 'native-results.json') -Raw|ConvertFrom-Json);InputSha256=$pins;
+        Scope='Signed/native scratch whole migration and optional automatic Apply/recovery; exact production virtual removal clauses with a frozen old inspector and inert absent-removal lease, actual completed removal journal/clean-reinstall validation and held-handle history retirement only in the new scratch root. Old-inspector missing-core proof rejection substitutes only the already validated journal result. Automatic checks copy only signed public game/loader/catalog compatibility inputs. No real installation/removal, Steam/game execution, production private key or network.'}
     $json=$result|ConvertTo-Json -Depth 7
     [IO.File]::WriteAllText((Join-Path $buildRoot 'verification.json'),$json,[Text.UTF8Encoding]::new($false))
     $json

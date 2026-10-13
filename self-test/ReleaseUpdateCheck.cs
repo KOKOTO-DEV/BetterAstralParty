@@ -71,6 +71,7 @@ internal static class ReleaseUpdateCheck
         HttpTransportCheck.Run();
         VersionsAndText();
         UpdateGenerationCheck.Run();
+        UpdateSafetyCheck.Run();
         AsyncChecks().GetAwaiter().GetResult();
         ModText.Select("한국어");
         Console.WriteLine($"Release updates: {_checks} production-code assertions passed (mock HTTP only; no credentials, live GitHub or game UI).");
@@ -374,6 +375,33 @@ internal static class ReleaseUpdateCheck
             rate.Reply = (_, _) => Task.FromResult(Response("[]"));
             updates.Check(Now.AddMinutes(5)); await Complete(updates);
             Check(updates.Result.Status == ReleaseUpdateStatus.UpToDate && rate.Requests.Count == 2, "rate limit expires");
+        }
+        foreach (var (name, header, value, delay) in new[] {
+            ("future date", "Retry-After", DateTimeOffset.MaxValue.ToString("r"), TimeSpan.FromDays(1)),
+            ("future reset", "X-RateLimit-Reset", "253402300799", TimeSpan.FromDays(1)),
+            ("past date", "Retry-After", Now.AddMinutes(-4).ToString("r"), TimeSpan.FromMinutes(1)),
+            ("past reset", "X-RateLimit-Reset", Now.AddMinutes(-4).ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture), TimeSpan.FromMinutes(1)),
+            ("valid date", "Retry-After", Now.AddMinutes(4).ToString("r"), TimeSpan.FromMinutes(4)),
+            ("valid reset", "X-RateLimit-Reset", Now.AddMinutes(4).ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture), TimeSpan.FromMinutes(4)),
+            ("long delta", "Retry-After", "172800", TimeSpan.FromDays(1)) })
+        {
+            var boundedRate = new Handler { Reply = (_, _) => {
+                var response = Response("", HttpStatusCode.TooManyRequests);
+                response.Headers.TryAddWithoutValidation(header, value);
+                return Task.FromResult(response);
+            } };
+            using var client = new HttpClient(boundedRate);
+            using var updates = new ReleaseUpdates("1.0.0", Repository, client, new Authentication());
+            updates.Check(Now); await Complete(updates);
+            Check(updates.Result.Status == ReleaseUpdateStatus.RateLimited && updates.Result.RetryAt == Now.Add(delay),
+                name + " uses a bounded server delay");
+            updates.SetChannel(ReleaseChannel.Beta);
+            updates.Check(Now.Add(delay).AddSeconds(-1)); updates.Poll();
+            Check(boundedRate.Requests.Count == 1, name + " remains shared across channel changes until due");
+            boundedRate.Reply = (_, _) => Task.FromResult(Response("[]"));
+            updates.Check(Now.Add(delay).AddSeconds(1)); await Complete(updates);
+            Check(updates.Result.Status == ReleaseUpdateStatus.UpToDate && boundedRate.Requests.Count == 2,
+                name + " expires and permits a fresh request");
         }
     }
     private static async Task CancellationAndTimeout()

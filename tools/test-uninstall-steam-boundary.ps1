@@ -3,8 +3,50 @@ $ErrorActionPreference='Stop'
 $scratch=Join-Path ([IO.Path]::GetTempPath()) ('bap-uninstall-steam-'+[guid]::NewGuid().ToString('N'))
 $package=Join-Path $scratch 'package'; $game=Join-Path $scratch 'game'; $steam=Join-Path $scratch 'Steam';$alternateSteam=Join-Path $scratch 'OtherSteam'
 $savedModulePath=$env:PSModulePath
-$probe=@{Processes=@();Answers=@();Stops=0;Starts=0;Transactions=0;Restores=0;CommitFailure=$false;ClientAfterRemove=$false;Failure=$null;Logged=@();RegistryRoot=$steam;RegistryAccount=1;SwitchRegistryOnConsent=$false;SwitchAccountOnResolution=$false;ShortcutCalls=@()}
+$probe=@{Processes=@();Answers=@();Stops=0;Starts=0;Transactions=0;Restores=0;PathPlans=0;CommitFailure=$false;ClientAfterRemove=$false;Failure=$null;Logged=@();RegistryRoot=$steam;RegistryAccount=1;SwitchRegistryOnConsent=$false;SwitchAccountOnResolution=$false;ShortcutCalls=@()}
 $checks=[Collections.Generic.List[object]]::new()
+# The native boundary is intentionally inert here; native held-object behavior has its own scratch fixture.
+Add-Type @'
+using System;
+using System.IO;
+using System.Collections.Generic;
+using System.Security.Cryptography;
+public static class SteamLauncher {
+    public static string FixtureRoot, FixtureJournalRoot;
+    public static FixtureRemovalLease LastLease;
+    public static int RemovalCalls;
+    // No receipt exists in this Steam-only fixture. Never fake successful signed history.
+    public static void ValidateInstalledHistory(string root) {
+        throw new InvalidOperationException("Receiptless Steam fixture must not claim installed history.");
+    }
+    public static IDisposable BeginOwnedRemoval(string root,string journalRoot,string journalHash,string[] targets,string rootIdentity,bool allowLoader) {
+        if(root!=FixtureRoot || journalRoot!=FixtureJournalRoot || rootIdentity!="fixture-root" || targets==null || targets.Length==0 || allowLoader)
+            throw new InvalidOperationException("Native removal fixture escaped its selected boundary.");
+        using(var sha=SHA256.Create()) {
+            var hash=BitConverter.ToString(sha.ComputeHash(File.ReadAllBytes(Path.Combine(journalRoot,"pending.json")))).Replace("-","");
+            if(hash!=journalHash)throw new InvalidOperationException("Fixture journal changed.");
+        }
+        LastLease=new FixtureRemovalLease(root,targets);RemovalCalls++;return LastLease;
+    }
+}
+public sealed class FixtureRemovalLease : IDisposable {
+    readonly string root; readonly HashSet<string> allowed;
+    public bool Disposed;
+    public FixtureRemovalLease(string selected,string[] targets) {
+        root=selected;allowed=new HashSet<string>(targets,StringComparer.Ordinal);
+        foreach(var target in targets)
+            if(Path.GetFullPath(target)!=target || !target.StartsWith(root+"\\",StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Fixture target escaped root.");
+    }
+    public void Remove(string target) {
+        if(Disposed || !allowed.Remove(target))throw new InvalidOperationException("Unexpected fixture removal.");
+        File.Delete(target);
+    }
+    public void WriteLoader(string target,string text) { throw new InvalidOperationException("Shared loader is not part of this fixture."); }
+    public void Dispose() { Disposed=true; }
+}
+'@
+
 function Put([string]$Path,[string]$Text) { $null=[IO.Directory]::CreateDirectory((Split-Path -Parent $Path));[IO.File]::WriteAllText($Path,$Text,[Text.UTF8Encoding]::new($true)) }
 function Check([string]$Name,[bool]$Passed) { $checks.Add([pscustomobject]@{case=$Name;passed=$Passed});if(!$Passed){throw ('Failed: '+$Name)} }
 function FakeSteam([int]$Id,[string]$Path) {
@@ -24,8 +66,9 @@ function Start-Process {param($FilePath,$WindowStyle)
 }
 function Read-Host {if(!$probe.Answers.Count){throw 'Unexpected fixture prompt'};$answer=$probe.Answers[0];$probe.Answers=@($probe.Answers|Select-Object -Skip 1);if($probe.SwitchRegistryOnConsent){$probe.RegistryRoot=$alternateSteam};return $answer}
 function Reset {
+    [SteamLauncher]::LastLease=$null;[SteamLauncher]::RemovalCalls=0
     Put $config 'owned setting';Put $shortcut 'registered';Put $alternateShortcut 'unrelated shortcut';Put $loader 'enabled=true';Put $otherMod 'another mod'
-    $probe.Processes=@();$probe.Answers=@();$probe.Stops=0;$probe.Starts=0;$probe.Transactions=0;$probe.Restores=0;$probe.CommitFailure=$false;$probe.ClientAfterRemove=$false;$probe.Failure=$null;$probe.Logged=@()
+    $probe.Processes=@();$probe.Answers=@();$probe.Stops=0;$probe.Starts=0;$probe.Transactions=0;$probe.Restores=0;$probe.PathPlans=0;$probe.CommitFailure=$false;$probe.ClientAfterRemove=$false;$probe.Failure=$null;$probe.Logged=@()
     $probe.RegistryRoot=$steam;$probe.RegistryAccount=1;$probe.SwitchRegistryOnConsent=$false;$probe.SwitchAccountOnResolution=$false;$probe.ShortcutCalls=@()
     if(Test-Path -LiteralPath $journal){Remove-Item -LiteralPath $journal}
 }
@@ -48,13 +91,14 @@ try {
     $shortcut=Join-Path $steam 'userdata/1/config/shortcuts.vdf'
     $alternateShortcut=Join-Path $alternateSteam 'userdata/1/config/shortcuts.vdf'
     $journal=Join-Path $scratch 'transaction/pending.json'
+    [SteamLauncher]::FixtureRoot=$game;[SteamLauncher]::FixtureJournalRoot=Split-Path -Parent $journal
     $uninstall=Join-Path $package 'tools/uninstall.ps1'
     $tokens=$null;$errors=$null
     $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'steam-shortcut.ps1'),[ref]$tokens,[ref]$errors)
     if($errors.Count){throw 'Shared guard parse failure'}
-    $names=@('Get-BapSteamStatus','New-BapSteamFailure','Assert-BapSteamStopped')
+    $names=@('Get-BapProcessObservation','Get-BapProcessFact','Get-BapSteamStatus','New-BapSteamFailure','Assert-BapSteamStopped')
     $defs=@($ast.FindAll({param($node)$node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -in $names},$false))
-    if($defs.Count -ne 3){throw 'Shared guard closure changed'}
+    if($defs.Count -ne $names.Count){throw 'Shared guard closure changed'}
     $text='param([Alias(''Mode'')]$BapShortcutMode,[Alias(''SteamRoot'')]$BapShortcutSteamRoot,[Alias(''GameRoot'')]$BapShortcutGameRoot,[Alias(''AccountId'')]$BapShortcutAccountId)' + "`r`n" + (($defs|ForEach-Object {$_.Extent.Text}) -join "`r`n") + "`r`n" + @'
 if($MyInvocation.InvocationName -eq '.'){return}
 if($BapShortcutGameRoot -ne $game){throw 'Shortcut fixture escaped selected game'}
@@ -76,8 +120,15 @@ switch($BapShortcutMode){
 '@
     Put (Join-Path $package 'tools/steam-shortcut.ps1') $text
     Put (Join-Path $package 'tools/install-policy.ps1') @'
-function Open-BapInstallBundle([string]$PackageRoot,[string]$GameRoot) {if($PackageRoot -ne $package -or $GameRoot -ne $game){throw 'Bundle fixture escaped'};return @{GameRoot=$game;Expected=@{};Leases=@()}}
+function Open-BapInstallBundle([string]$PackageRoot,[string]$GameRoot) {if($PackageRoot -ne $package -or $GameRoot -ne $game){throw 'Bundle fixture escaped'};return @{GameRoot=$game;RootIdentity='fixture-root';Expected=@{};Leases=@()}}
+function Get-BapInstallVerifier($Bundle) {if($Bundle.GameRoot -ne $game){throw 'Verifier fixture escaped'};return [SteamLauncher].Assembly}
 function Assert-BapInstallRoot($Bundle) {if($Bundle.GameRoot -ne $game){throw 'Bundle fixture escaped'}}
+# Inert pure-preflight substitute only; actual native path limits have separate pinned-inspector checks.
+function Assert-BapMaintenancePathPlan($Bundle,[string[]]$Targets) {
+    if($Bundle.GameRoot -ne $game){throw 'Path-plan fixture escaped selected game'}
+    foreach($target in $Targets){if(![IO.Path]::GetFullPath($target).StartsWith($game+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Path-plan target escaped selected game'}}
+    $probe.PathPlans++
+}
 '@
     Put (Join-Path $package 'tools/install-helper.ps1') @'
 function Start-BapInstallerDiagnostics($Bundle) {return $null}
@@ -98,13 +149,17 @@ function Start-InstallTransaction {param($GameRoot,$Targets,$Bytes)
 }
 function Complete-InstallTransaction {param($GameRoot,$AllowedTargets,$VerifiedBundle);if($probe.CommitFailure){throw 'Fixture commit failure'};Remove-Item -LiteralPath $journal}
 function Restore-InstallTransaction {param($GameRoot,$ExpectedCurrent,$AllowedTargets,$VerifiedBundle)
-    $probe.Restores++;$state=Get-Content -Raw -LiteralPath $journal|ConvertFrom-Json
+    $probe.Restores++;if([SteamLauncher]::LastLease -and ![SteamLauncher]::LastLease.Disposed){throw 'Removal lease was not released before rollback'};$state=Get-Content -Raw -LiteralPath $journal|ConvertFrom-Json
     foreach($entry in $state.Entries){Assert-InstallTarget $GameRoot $entry.Target;if(Test-Path -LiteralPath $entry.Target){throw 'Fixture rollback must not overwrite newly appeared file'};[IO.File]::Copy($entry.Backup,$entry.Target,$false)}
     Remove-Item -LiteralPath $journal
 }
 '@
+    Reset
+    & $uninstall -GameRoot $game -AccountId 1 -WhatIf
+    Check 'WhatIf plans paths but never enters native removal or writes backup/shortcut' ($probe.PathPlans -eq 1 -and [SteamLauncher]::RemovalCalls -eq 0 -and $probe.Transactions -eq 0 -and [IO.File]::ReadAllText($config) -eq 'owned setting' -and [IO.File]::ReadAllText($shortcut) -eq 'registered')
     Reset;$probe.Processes=@(FakeSteam 90 'C:\unrelated\steam.exe')
     & $uninstall -GameRoot $game -AccountId 1 -Confirm:$false
+    Check 'native removal disposed before completed journal' ([SteamLauncher]::LastLease.Disposed)
     Check 'other-root client does not block current uninstaller' (!(Test-Path -LiteralPath $config) -and [IO.File]::ReadAllText($shortcut) -eq 'removed' -and !$probe.Stops -and !$probe.Starts)
     Check 'default uninstall preserves shared loader and other mod' ([IO.File]::ReadAllText($loader) -eq 'enabled=true' -and [IO.File]::ReadAllText($otherMod) -eq 'another mod')
     Reset;$unknown=FakeSteam 91 ''; $unknown.Path=$null;$probe.Processes=@($unknown);$probe.Answers=@('')
@@ -137,3 +192,4 @@ function Restore-InstallTransaction {param($GameRoot,$ExpectedCurrent,$AllowedTa
     if((Split-Path $resolved -Parent) -ne [IO.Path]::GetTempPath().TrimEnd('\') -or (Split-Path $resolved -Leaf) -notlike 'bap-uninstall-steam-*'){throw 'Unsafe fixture cleanup'}
     if(Test-Path -LiteralPath $resolved){Remove-Item -LiteralPath $resolved -Recurse -Force}
 }
+

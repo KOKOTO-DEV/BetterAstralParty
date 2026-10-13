@@ -11,7 +11,7 @@ $sourceHashes=@{}
 foreach($source in $sources){$sourceHashes[$source]=(Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $projectRoot $source)).Hash}
 function Read-FixtureAst([string]$Path){
     $tokens=$null;$errors=$null
-    $ast=[Management.Automation.Language.Parser]::ParseFile($Path,[ref]$tokens,[ref]$errors)
+    $ast=[Management.Automation.Language.Parser]::ParseInput([IO.File]::ReadAllText($Path,[Text.Encoding]::UTF8),[ref]$tokens,[ref]$errors)
     if($errors.Count){throw "Production script syntax invalid: $Path"}
     return $ast
 }
@@ -22,7 +22,7 @@ function Get-FixtureFunction($Ast,[string]$Name){
 }
 $policy=Read-FixtureAst (Join-Path $projectRoot 'tools/install-policy.ps1')
 $backup=Read-FixtureAst (Join-Path $projectRoot 'tools/install-backup.ps1')
-$definitions=@(foreach($name in @('Read-BapInstallJson','Get-BapInstallHash','Read-BapInstallFile','Get-BapInstallVersion','Open-BapInstallBundle')){Get-FixtureFunction $policy $name})
+$definitions=@(foreach($name in @('Read-BapInstallJson','Get-BapInstallHash','Read-BapInstallFile','Get-BapInstallVersion','Compare-BapInstallVersion','Assert-BapMaintenancePath','Open-BapInstallBundle')){Get-FixtureFunction $policy $name})
 $definitions+=Get-FixtureFunction $backup 'Assert-InstallTarget'
 . ([scriptblock]::Create($definitions -join "`n"))
 # These calls are beyond the inventory boundary under test; reaching them is a failure.
@@ -41,6 +41,11 @@ function Snapshot-FixtureGame {
 }
 $before=Snapshot-FixtureGame
 $assertions=0;$results=@()
+foreach($case in @(@('1.2.1',0,1),@('1.2.1-0',1,0),@('1.2.1-rc.1.local.1',4,1))){
+    $parsed=Get-BapInstallVersion $case[0]
+    if($parsed.Pre -isnot [Array] -or $parsed.Pre.Count -ne $case[1] -or (Compare-BapInstallVersion $parsed (Get-BapInstallVersion '1.2.1-0')) -ne $case[2]){throw 'StrictMode version comparison must preserve zero, one and many prerelease identifiers.'}
+    $assertions++
+}
 foreach($mode in @('missing-launcher','missing-directory','changed-present-hash')){
     $package=Join-Path $scratch $mode
     $null=[IO.Directory]::CreateDirectory($package)
@@ -53,7 +58,7 @@ foreach($mode in @('missing-launcher','missing-directory','changed-present-hash'
     $inventory=@(@{path='first.keep';bytes=$bytes.Length;sha256=(Get-BapInstallHash $bytes)},@{path='artifacts/BetterAstralParty-Launcher.exe';bytes=$bytes.Length;sha256=('0'*64)})
     foreach($i in 1..8){$inventory+=@{path="later-$i.keep";bytes=0;sha256=('0'*64)}}
     $manifest=Join-Path $package 'package-manifest.json'
-    [IO.File]::WriteAllText($manifest,(@{schema=1;version='1.1.2';kind='inert-diagnostic-fixture';files=$inventory}|ConvertTo-Json -Depth 4),[Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText($manifest,(@{schema=1;version='1.2.1';kind='inert-diagnostic-fixture';files=$inventory}|ConvertTo-Json -Depth 4),[Text.UTF8Encoding]::new($false))
     $failure=$null
     try{$bundle=Open-BapInstallBundle -PackageRoot $package -GameRoot $game;foreach($lease in $bundle.Leases){$lease.Dispose()};throw 'Incomplete package unexpectedly accepted.'}
     catch{$failure=$_.Exception.GetBaseException().Message}

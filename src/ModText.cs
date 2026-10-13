@@ -5,6 +5,13 @@ namespace BetterAstralParty;
 // Only mod-owned presentation strings. Never translate player input or native descriptions.
 internal static class ModText
 {
+    internal static string ChannelTransitionTitle => Korean ? "채널 전환 확인" : "Confirm Channel Switch";
+    internal static string ChannelTransitionConfirm => Korean ? "종료 후 전환" : "Switch After Exit";
+    internal static string ChannelTransitionUnavailable => Korean ? "채널 전환 승인을 중단했습니다. 업데이트 설정에서 대상과 설치 상태를 다시 확인하세요. 원인은 진단 로그에 기록됩니다."
+        : "Channel switch approval stopped. Recheck the target and installation in Update Settings. The reason is recorded in diagnostics.";
+    internal static string ChannelTransitionDetails(string source, string current, string target, string version, string repository) => Korean
+        ? $"현재: {source} {current}\n대상: {target} {version}\n저장소: {repository}\n\n선택한 저장소의 서명된 최신 대상을 확인했습니다. 승인하면 다운로드하여 게임 종료 후 한 번 적용합니다. 설정은 보존하며 저장된 자동 다운로드·종료 후 적용 선택은 바꾸지 않습니다. 다음 실행부터 대상 버전을 사용합니다.\n\n대상이나 설치 상태가 바뀌면 다시 확인해야 합니다."
+        : $"Installed: {source} {current}\nTarget: {target} {version}\nRepository: {repository}\n\nThe signed latest target from the selected repository has been checked. Confirm to download and apply once after the game exits. Settings and saved automatic-download/apply choices are preserved. The target version is used on the next launch.\n\nA changed target or installation requires a new review.";
     internal static string SessionTitle(string action) => Korean ? (action == "UpdateAuth" ? "업데이트 인증" : "업데이트 로그아웃") : (action == "UpdateAuth" ? "Connect Updates" : "Sign Out of Updates");
     internal static string SessionDetails(ReleaseSessionStatus status) => (Korean ? "비공개 업데이트 인증: " : "Private update session: ") + (Korean ? status switch {
         ReleaseSessionStatus.NotConfigured => "보안 승인과 공개 검증 키 설정이 필요합니다.",
@@ -62,7 +69,7 @@ internal static class ModText
         ["업데이트 확인"] = "Check Updates",
         ["다운로드 페이지"] = "Download Page",
         ["안정판"] = "Stable",
-        ["베타 포함"] = "Include Beta",
+        ["베타"] = "Beta",
         ["인증 미설정"] = "Authentication not configured",
         ["미확인"] = "Not checked",
         ["확인 중"] = "Checking",
@@ -82,9 +89,9 @@ internal static class ModText
         ["다음 확인"] = "Next check",
         ["변경 사항"] = "Changes",
         ["변경 사항 없음"] = "No release notes",
-        ["베타와 안정판의 새 버전을 확인합니다.\n클릭하면 안정판으로 전환합니다."] = "Checks beta and stable releases.\nClick to switch to stable only.",
-        ["안정판의 새 버전을 확인합니다.\n클릭하면 베타 포함으로 전환합니다."] = "Checks stable releases.\nClick to include beta releases.",
-        ["클릭: 안정판 ↔ 베타 포함\n파일을 자동으로 교체하지 않습니다."] = "Click: Stable ↔ Include Beta\nFiles are not replaced automatically.",
+        ["Beta 저장소의 최신 버전을 확인합니다.\n클릭하면 Stable 저장소로 전환합니다."] = "Checks the latest release in the Beta repository.\nClick to select the Stable repository.",
+        ["Stable 저장소의 최신 버전을 확인합니다.\n클릭하면 Beta 저장소로 전환합니다."] = "Checks the latest release in the Stable repository.\nClick to select the Beta repository.",
+        ["클릭: 안정판 ↔ 베타\n선택한 저장소의 최신 버전을 확인합니다.\n채널 전환은 대상을 확인한 후 승인합니다."] = "Click: Stable ↔ Beta\nChecks the latest release in the selected repository.\nReview and confirm the exact target before switching.",
         ["새 버전 확인 상태를 표시합니다.\n변경 사항은 업데이트 알림에서 확인합니다.\n비공개 릴리스에는 인증이 필요합니다."] = "Shows the update check status.\nRelease notes appear in the update notification.\nPrivate releases require authentication.",
         ["선택한 채널의 GitHub 릴리스 목록을 엽니다.\n다운로드와 설치는 직접 진행합니다."] = "Opens GitHub releases for the selected channel.\nDownload and install it yourself.",
         ["자동 선택은 게임 메뉴 언어에 맞춰\n모드 설명 언어를 설정합니다.\n게임 자체 언어는 변경하지 않습니다."] = "Auto follows the game menu language.\nOnly mod text is affected.",

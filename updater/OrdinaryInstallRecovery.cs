@@ -38,12 +38,134 @@ namespace BetterAstralParty.Updating {
                 try {f.DirectoryIdentity(parent);}catch(ApplySafetyException e) when(e.NativeError==2 || e.NativeError==3){f.CreatePrivateDirectory(parent);}
             }
         }
+        // Used only after the uninstaller has previewed and backed up the exact fixed owned set.
+        internal sealed class OwnedRemovalLease : IDisposable {
+            private readonly List<IDisposable> _leases=new List<IDisposable>();
+            private readonly Dictionary<string,Entry> _entries=new Dictionary<string,Entry>(StringComparer.OrdinalIgnoreCase);
+            private WindowsFileFence? _game,_backups;
+            private WindowsFileFence.OrdinaryJournal? _mapped;
+            private WindowsFileFence.FileLease? _journal;
+            private WindowsProcessGuard.LaunchLease? _processes;
+            private string[] _guardImages=Array.Empty<string>();
+            private readonly string _journalHash;private readonly bool _allowLoader;
+            private bool _disposed;
+            private static bool Owned(string relative,bool loader) {
+                foreach(var name in InstallReceipt.Owned)if(name==relative)return true;
+                foreach(var name in new[]{
+                    InstallReceipt.Path,HelperDescriptor.Image,HelperDelivery.Receipt,
+                    "BepInEx/config/kr.betterastralparty.mod.cfg",
+                    "BepInEx/BetterAstralParty-Diagnostics/current.log",
+                    "BepInEx/BetterAstralParty-Diagnostics/previous.log",
+                    "BepInEx/BetterAstralParty-Diagnostics/combat-mismatch.log",
+                    "BepInEx/BetterAstralParty-Diagnostics/combat-mismatch-previous.log",
+                    "BetterAstralParty-Compatibility.log","BetterAstralParty-LaunchError.log"})
+                    if(name==relative)return true;
+                return loader && relative=="doorstop_config.ini";
+            }
+            internal OwnedRemovalLease(string root,string journalRoot,string journalHash,string[] allowedTargets,string rootIdentity,bool allowLoader) {
+                _journalHash=journalHash;_allowLoader=allowLoader;
+                if(allowedTargets==null || allowedTargets.Length<1 || allowedTargets.Length>300 || !Regex.IsMatch(journalHash,@"\A[A-F0-9]{64}\z"))throw Bad();
+                try {
+                    var canonical=Path.GetFullPath(root).TrimEnd('\\');var local=Environment.GetEnvironmentVariable("LOCALAPPDATA");
+                    if(string.IsNullOrEmpty(local))throw Bad();
+                    var rootKey=UpdateTrust.Hash(Encoding.UTF8.GetBytes(canonical.ToLowerInvariant()));
+                    if(journalRoot!=Path.GetFullPath(Path.Combine(local,"BetterAstralParty","Backups","v3",rootKey)))throw Bad();
+                    _mapped=new WindowsFileFence.OrdinaryJournal(journalRoot);_leases.Add(_mapped);
+                    _game=new WindowsFileFence(canonical);_leases.Add(_game);
+                    _backups=new WindowsFileFence(Path.GetDirectoryName(_mapped.PhysicalPath)!);_leases.Add(_backups);
+                    _journal=_backups.OpenFile("pending.json",true);_leases.Add(_journal);
+                    if(!_mapped.Identity.Same(_journal.Identity) || Path.GetFileName(_mapped.PhysicalPath)!="pending.json" ||
+                        _game.RootIdentity.Text!=rootIdentity || _journal.Hash()!=journalHash)throw Bad();
+                    _mapped.Recheck(_backups.Full("pending.json"));
+                    if(_game.Root.Equals(_backups.Root,StringComparison.OrdinalIgnoreCase) || _game.Root.StartsWith(_backups.Root+"\\",StringComparison.OrdinalIgnoreCase) ||
+                        _backups.Root.StartsWith(_game.Root+"\\",StringComparison.OrdinalIgnoreCase))throw Bad();
+                    UpdateLaunchGate.Check(_game);
+                    _guardImages=new[]{_game.Full("AstralParty_INT.exe"),_game.Full("BetterAstralParty-Launcher.exe"),_game.Full(HelperDescriptor.Image)};
+                    WindowsProcessGuard.AssertNoRunning(_guardImages);
+                    // The launcher/helper are mutable removal targets; their exclusive target leases close their open/start race.
+                    _processes=WindowsProcessGuard.Acquire(_game,new[]{"AstralParty_INT.exe"});_leases.Add(_processes);
+                    var state=new InstallReceipt.Json(UpdateTicket.Read(_journal,1024*1024),1024*1024,300,1024).Parse() as Dictionary<string,object?>;
+                    if(state==null || state.Count!=3 || Text(state,"GameRoot")!=_game.Root)throw Bad();
+                    var backupDir=Text(state,"BackupDir");var leaf=BackupLeaf(journalRoot,backupDir);_backups.DirectoryIdentity(leaf);
+                    object? value;if(!state.TryGetValue("Entries",out value))throw Bad();var rows=value as List<object?>;
+                    if(rows==null || rows.Count<1 || rows.Count>300)throw Bad();
+                    var allowed=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach(var path in allowedTargets) {
+                        var relative=Relative(_game,path);
+                        if(!Owned(relative,allowLoader) || !allowed.Add(relative))throw Bad();
+                    }
+                    for(var i=0;i<rows.Count;i++) {
+                        var row=rows[i] as Dictionary<string,object?>;
+                        if(row==null || row.Count!=4 || !row.ContainsKey("Existed") || !(row["Existed"] is bool) || !row.ContainsKey("Hash"))throw Bad();
+                        var relative=Relative(_game,Text(row,"Target"));
+                        if(!allowed.Contains(relative) || _entries.ContainsKey(relative) ||
+                            Text(row,"Backup")!=Path.Combine(backupDir,i.ToString(CultureInfo.InvariantCulture)+".bin"))throw Bad();
+                        var entry=new Entry {Relative=relative,Existed=(bool)row["Existed"]!};
+                        _entries.Add(relative,entry);
+                        entry.Backup=Maybe(_backups,leaf+"/"+i.ToString(CultureInfo.InvariantCulture)+".bin");if(entry.Backup!=null)_leases.Add(entry.Backup);
+                        entry.Target=Maybe(_game,relative,true);if(entry.Target!=null)_leases.Add(entry.Target);
+                        if(entry.Existed) {
+                            if(!(row["Hash"] is string))throw Bad();entry.Hash=(string)row["Hash"]!;
+                            if(!Regex.IsMatch(entry.Hash,@"\A[A-F0-9]{64}\z") || entry.Backup==null || entry.Backup.Hash()!=entry.Hash ||
+                                entry.Target==null || entry.Target.Hash()!=entry.Hash)throw Bad();
+                        } else {
+                            if(row["Hash"]!=null || entry.Backup!=null || entry.Target!=null)throw Bad();
+                            Parents(_game,relative);entry.Target=_game.OpenFile(relative,true,true);entry.Created=true;_leases.Add(entry.Target);
+                        }
+                    }
+                    if(_entries.Count!=allowed.Count)throw Bad();
+                    Recheck();
+                } catch {Dispose();throw;}
+            }
+            private void Recheck() {
+                if(_disposed || _game==null || _backups==null || _mapped==null || _journal==null || _processes==null)throw Bad();
+                _game.Recheck();_backups.Recheck();_mapped.Recheck(_backups.Full("pending.json"));_processes.Recheck();
+                WindowsProcessGuard.AssertNoRunning(_guardImages);
+                if(_journal.Hash()!=_journalHash)throw Bad();
+                foreach(var entry in _entries.Values) {
+                    if(entry.Existed && entry.Backup!.Hash()!=entry.Hash)throw Bad();
+                    entry.Target?.Recheck();
+                }
+            }
+            private Entry Target(string absolute) {
+                Recheck();if(_game==null)throw Bad();var relative=Relative(_game,absolute);
+                if(!_entries.TryGetValue(relative,out var entry) || entry.Target==null)throw Bad();
+                return entry;
+            }
+            public void Remove(string absolute) {
+                var entry=Target(absolute);
+                var target=entry.Target??throw Bad();
+                if(entry.Relative=="doorstop_config.ini")throw Bad();
+                if(entry.Existed && target.Hash()!=entry.Hash || !entry.Existed && target.Stream.Length!=0)throw Bad();
+                target.RemoveOrdinaryRecoveryTarget(entry.Relative);
+                target.Dispose();entry.Target=null;entry.Created=false;entry.Remove=true;
+            }
+            public void WriteLoader(string absolute,string next) {
+                var entry=Target(absolute);
+                var target=entry.Target??throw Bad();
+                if(!_allowLoader || entry.Relative!="doorstop_config.ini" || !entry.Existed || target.Hash()!=entry.Hash)throw Bad();
+                var old=new UTF8Encoding(false,true).GetString(UpdateTicket.Read(target,1024*1024)).TrimStart('\uFEFF');
+                const string pattern=@"(?m)^enabled\s*=\s*(true|false)\s*$";
+                if(Regex.Matches(old,pattern).Count!=1 ||
+                    next!=Regex.Replace(old,pattern,"enabled=true") && next!=Regex.Replace(old,pattern,"enabled=false"))throw Bad();
+                var bytes=new UTF8Encoding(false,true).GetBytes(next);
+                target.Stream.Position=0;target.Stream.Write(bytes,0,bytes.Length);target.Stream.SetLength(bytes.Length);target.Flush();
+                if(target.Hash()!=UpdateTrust.Hash(bytes))throw Bad();
+            }
+            public void Dispose() {
+                if(_disposed)return;
+                foreach(var entry in _entries.Values)if(entry.Created && entry.Target!=null)
+                    try {entry.Target.RemoveOrdinaryRecoveryTarget(entry.Relative);}catch(ApplySafetyException){ }
+                for(var i=_leases.Count-1;i>=0;i--)_leases[i].Dispose();
+                _leases.Clear();_disposed=true;
+            }
+        }
         internal static void Run(string root,string journalRoot,string expectedJournalHash,string[] allowedTargets,string? expectedCurrentJson,bool completeOnly,string expectedRootIdentity,Action<string>? boundary=null) {
             if(allowedTargets==null || allowedTargets.Length<1 || allowedTargets.Length>300 || !Regex.IsMatch(expectedJournalHash,@"\A[A-F0-9]{64}\z"))throw Bad();
             var canonical=Path.GetFullPath(root).TrimEnd('\\');
             var local=Environment.GetEnvironmentVariable("LOCALAPPDATA");if(string.IsNullOrEmpty(local))throw Bad();
             var rootKey=UpdateTrust.Hash(Encoding.UTF8.GetBytes(canonical.ToLowerInvariant()));
-            if(journalRoot!=Path.GetFullPath(Path.Combine(local,"BetterAstralParty","Backups",rootKey)))throw Bad();
+            if(journalRoot!=Path.GetFullPath(Path.Combine(local,"BetterAstralParty","Backups","v3",rootKey)))throw Bad();
             using(var mapped=new WindowsFileFence.OrdinaryJournal(journalRoot))
             using(var game=new WindowsFileFence(canonical))using(var backups=new WindowsFileFence(Path.GetDirectoryName(mapped.PhysicalPath)!))using(var journal=backups.OpenFile("pending.json",true)) {
                 if(!mapped.Identity.Same(journal.Identity) || Path.GetFileName(mapped.PhysicalPath)!="pending.json")throw Bad();

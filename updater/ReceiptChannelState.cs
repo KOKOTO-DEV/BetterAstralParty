@@ -32,7 +32,7 @@ namespace BetterAstralParty.Updating
         internal string ActiveRepository { get { return ActiveChannel == "Stable" ? ReleaseFeedPolicy.StableRepository : ReleaseFeedPolicy.BetaRepository; } }
         internal ReceiptChannelState Applied(string root, VerifiedUpdateDescriptor descriptor, string operation, ChannelTransitionIntent? intent = null)
         {
-            if (Root != root || descriptor.Protocol != 2) throw new ApplySafetyException(ApplyFailure.RecoveryRequired);
+            if (Root != root || descriptor.Protocol != 3) throw new ApplySafetyException(ApplyFailure.RecoveryRequired);
             var stable = descriptor.Channel == "Stable";
             var old = stable ? StableVersion : BetaVersion;
             var id = stable ? StableRepositoryId : BetaRepositoryId;

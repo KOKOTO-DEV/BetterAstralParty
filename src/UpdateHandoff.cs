@@ -13,7 +13,7 @@ internal sealed class UpdateHandoff(string root, UpdateTrust trust, string helpe
     internal Task Initialize() {
         if (!trust.Configured || Volatile.Read(ref _helperHash).Length == 64) return Task.CompletedTask;
         using var fence = new WindowsFileFence(root);
-        Volatile.Write(ref _helperHash, HelperDelivery.Fingerprint(fence, trust, minimumProtocol: 2) ?? "");
+        Volatile.Write(ref _helperHash, HelperDelivery.Fingerprint(fence, trust, minimumProtocol: 3) ?? "");
         return Task.CompletedTask;
     }
     private sealed record Prepared(string Root, UpdateTicket Ticket, UpdateCancelSignal Signal) : IPreparedUpdate { public string Stage => Ticket.Stage; }
@@ -63,7 +63,7 @@ internal sealed class UpdateHandoff(string root, UpdateTrust trust, string helpe
         }
         token.ThrowIfCancellationRequested(); UpdateTicket.Write(fence, ticket.Stage + "/handoff.ticket", ticket.Bytes());
         if (context.Transition != null) {
-            try { UpdateTicket.Write(fence, "bap-transition-" + context.Transition.Operation,
+            try { UpdateTicket.Write(fence, "bap-v3-transition-" + context.Transition.Operation,
                 Encoding.ASCII.GetBytes(context.Transition.Identity + "\nstage=" + ticket.Stage + "\n")); }
             catch (ApplySafetyException error) when (error.NativeError == 80 || error.NativeError == 183) { throw new AutomaticUpdateException(AutomaticUpdateStatus.Cancelled); }
         }

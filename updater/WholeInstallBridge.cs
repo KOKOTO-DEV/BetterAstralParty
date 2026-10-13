@@ -11,8 +11,6 @@ namespace BetterAstralParty.Updating {
     // An authenticated durable intent precedes owned8/receipt replacement. Helper commit follows that transaction.
     // Old objects are archived by handle rename, keeping their identities and signed provenance.
     internal static class WholeInstallBridge {
-        private const string OriginalDevImage = "816BBDE3EE27DD306F7266D4D9CCCC0B143D9A7FA34B1FDF7B46C73E8651BE31";
-        private const string OriginalDevPlugin = "283D554024FE664B8FB67BACD7777C3BDF5C0CB777332D731BCDD8BA98ABFDA1";
         private static ApplySafetyException Bad(string? reason=null) {
             var error=new ApplySafetyException(ApplyFailure.RecoveryRequired);
             if(reason!=null)error.Data["BapRecoveryReason"]=reason;
@@ -35,7 +33,7 @@ namespace BetterAstralParty.Updating {
             var envelope=DetachedSignature.Parse(signature);
             var l=Encoding.ASCII.GetString(bytes).Split('\n');
             var local=l.Length>0 && l[0]=="BetterAstralParty.LocalInstallDescriptor/v1";
-            if(l.Length<15 || !local && l[0]!="BetterAstralParty.UpdateDescriptor/v2" || !l[1].StartsWith("repository=",StringComparison.Ordinal) || !l[2].StartsWith("version=",StringComparison.Ordinal) || !l[3].StartsWith("channel=",StringComparison.Ordinal) || !l[5].StartsWith("release-id=",StringComparison.Ordinal) || !l[6].StartsWith("asset-id=",StringComparison.Ordinal) || !l[12].StartsWith("repository-id=",StringComparison.Ordinal)) throw Bad();
+            if(l.Length<15 || !local && l[0]!="BetterAstralParty.UpdateDescriptor/v3" || !l[1].StartsWith("repository=",StringComparison.Ordinal) || !l[2].StartsWith("version=",StringComparison.Ordinal) || !l[3].StartsWith("channel=",StringComparison.Ordinal) || !l[5].StartsWith("release-id=",StringComparison.Ordinal) || !l[6].StartsWith("asset-id=",StringComparison.Ordinal) || !l[12].StartsWith("repository-id=",StringComparison.Ordinal)) throw Bad();
             long release,asset,id;
             if(!long.TryParse(l[5].Substring(11),NumberStyles.None,CultureInfo.InvariantCulture,out release) || !long.TryParse(l[6].Substring(9),NumberStyles.None,CultureInfo.InvariantCulture,out asset) || !long.TryParse(l[12].Substring(14),NumberStyles.None,CultureInfo.InvariantCulture,out id)) throw Bad();
             if(local && (release!=0 || asset!=0)) throw Bad();
@@ -49,45 +47,173 @@ namespace BetterAstralParty.Updating {
             internal readonly WindowsFileFence Source;
             internal readonly VerifiedUpdateDescriptor Update;
             internal readonly HelperDescriptor Helper;
-            internal readonly byte[] HelperBytes, HelperDescriptorBytes, HelperSignature;
+            internal readonly byte[] HelperBytes, HelperDescriptorBytes, HelperSignature, UpdateDescriptorBytes, UpdateSignatureBytes;
+            internal readonly string ManifestHash;
+            internal byte[]? PriorDescriptor, PriorSignature;
             private readonly List<IDisposable> _leases=new List<IDisposable>();
             private byte[] Read(string p, long limit) { var f=Source.OpenLaunchImage(p);_leases.Add(f);return UpdateTicket.Read(f,limit); }
+            internal bool PriorProof(string digest) {
+                if(!Digest(digest))throw Bad("PriorProofDigestInvalid");
+                try {PriorDescriptor=Read("update-proof/prior/"+digest+".descriptor",UpdateTrust.MaxDescriptorBytes);}
+                catch(ApplySafetyException e) when(e.NativeError==2 || e.NativeError==3) {return false;}
+                PriorSignature=Read("update-proof/prior/"+digest+".signature",1024);
+                if(UpdateTrust.Hash(PriorDescriptor)!=digest)throw Bad("PriorProofDigestMismatch");
+                return true;
+            }
             internal Inputs(string root,string package,string version) {
                 Source=new WindowsFileFence(package);
                 try {
                     var actual=Path.GetFullPath(root).TrimEnd('\\');
                     if(actual.Equals(Source.Root,StringComparison.OrdinalIgnoreCase) || actual.StartsWith(Source.Root+"\\",StringComparison.OrdinalIgnoreCase) || Source.Root.StartsWith(actual+"\\",StringComparison.OrdinalIgnoreCase)) throw Bad();
-                    var bytes=Read("update-proof/update.descriptor",UpdateTrust.MaxDescriptorBytes);
-                    Update=VerifyUpdateProof(bytes,Read("update-proof/update.signature",1024));
-                    if(Update.Version!=version || Update.Protocol!=2 || Update.Files.Count!=8) throw Bad();
+                    ManifestHash=UpdateTrust.Hash(Read("package-manifest.json",1024*1024));
+                    UpdateDescriptorBytes=Read("update-proof/update.descriptor",UpdateTrust.MaxDescriptorBytes);
+                    UpdateSignatureBytes=Read("update-proof/update.signature",1024);
+                    Update=VerifyUpdateProof(UpdateDescriptorBytes,UpdateSignatureBytes);
+                    if(Update.Version!=version || Update.Protocol!=3 || Update.Files.Count!=8) throw Bad();
                     foreach(var file in Update.Files) {
                         var name=file.Path==UpdateTrust.PluginPath ? "artifacts/BetterAstralParty.dll" : file.Path=="BetterAstralParty-Launcher.exe" || file.Path=="BetterAstralParty.compatibility.json" ? "artifacts/"+file.Path : "tools/"+file.Path;
                         var payload=Read(name,UpdateTrust.MaxFileBytes);
                         if(payload.LongLength!=file.Bytes || UpdateTrust.Hash(payload)!=file.Sha256) throw Bad();
                         if(file.Path==UpdateTrust.PluginPath) {
                             var metadata=InstalledPluginMetadata.Read(payload);
-                            if(metadata.Version!=version || metadata.UpdateProtocol!=2 || metadata.SettingsSchema!=1)throw Bad();
+                            if(metadata.Version!=version || metadata.UpdateProtocol!=3 || metadata.SettingsSchema!=1)throw Bad();
                         }
                     }
                     HelperDescriptorBytes=Read("helper-bootstrap/helper.descriptor",UpdateTrust.MaxDescriptorBytes);
                     HelperSignature=Read("helper-bootstrap/helper.signature",1024);
                     HelperBytes=Read("helper-bootstrap/"+HelperDescriptor.Image,UpdateTrust.MaxFileBytes);
                     Helper=HelperDescriptor.Verify(UpdateTrust.Production(),HelperDescriptorBytes,DetachedSignature.Parse(HelperSignature),HelperBytes,version);
-                    if(Helper.Protocol<2) throw Bad();
+                    if(Helper.Protocol<3) throw Bad();
                 } catch {Dispose();throw;}
             }
             public void Dispose() {for(var i=_leases.Count-1;i>=0;i--)_leases[i].Dispose();_leases.Clear();Source.Dispose();}
         }
         internal static void ValidateInputs(string root,string package,string version) { using(var input=new Inputs(root,package,version)) { } }
-        internal static void ValidatePartialRemoval(string root) {
+        internal static void ValidateMaintenancePaths(string root,string journalRoot) {
+            WindowsFileFence.ValidatePlannedPath(root);WindowsFileFence.ValidatePlannedPath(journalRoot);
+            var id=new string('a',32);
+            foreach(var path in InstallReceipt.Owned)WindowsFileFence.ValidatePlannedPath(Path.Combine(root,path.Replace('/','\\')));
+            foreach(var path in new[]{InstallReceipt.Path,HelperDescriptor.Image,HelperDelivery.Receipt,UpdateTransaction.HighWaterPath,UpdateFaults.OperationPath,UpdateFaults.FailurePath})
+                WindowsFileFence.ValidatePlannedPath(Path.Combine(root,path));
+            foreach(var prefix in new[]{"bap-v3-wholeintent-","bap-v3-wholehist-"})
+                foreach(var leaf in new[]{"old-plugin","old-receipt","target-receipt","signed-update.descriptor","signed-update.signature","plan","committed","cancelled"})
+                    WindowsFileFence.ValidatePlannedPath(Path.Combine(root,prefix+id,leaf));
+            foreach(var prefix in new[]{"bap-v3-helperbridge-","bap-v3-helper-"})
+                foreach(var leaf in new[]{"descriptor","signature","image","receipt","plan","committed","rolled-back"})
+                    WindowsFileFence.ValidatePlannedPath(Path.Combine(root,prefix+id,leaf));
+            foreach(var path in new[]{"pending.json","pending.json.lock",id+"/pending.json",id+"/completed.json",id+"/restored.json",id+"/299.bin"})
+                WindowsFileFence.ValidatePlannedPath(Path.Combine(journalRoot,path.Replace('/','\\')));
+        }
+        private static bool MatchesInstalledProof(WindowsFileFence f,InstallReceipt receipt,VerifiedUpdateDescriptor proof) {
+            var state=receipt.Channels;
+            if(state==null || state.Root!=f.RootIdentity.Text || state.ActiveVersion!=UpdateVersion.Parse(proof.Version).Tag ||
+                state.ActiveChannel!=proof.Channel || state.ActiveRepositoryId!=proof.RepositoryId ||
+                proof.Protocol!=3 || proof.SettingsSchema!=1 || proof.Files.Count!=InstallReceipt.Owned.Length ||
+                (state.ActiveChannel=="Stable"?state.StableDescriptor:state.BetaDescriptor)!=proof.DescriptorSha256)return false;
+            foreach(var item in proof.Files)if(!receipt.Files.TryGetValue(item.Path,out var hash) || hash!=item.Sha256)return false;
+            return true;
+        }
+        private static byte[] ProofFile(WindowsFileFence f,string path,long limit,Dictionary<string,string> pins) {
+            using(var file=f.OpenFile(path)) {
+                var bytes=UpdateTicket.Read(file,limit);pins.Add(path,file.Hash());return bytes;
+            }
+        }
+        // A receipt's claimed version never grants ownership without an exact signed owned8 proof.
+        private static VerifiedUpdateDescriptor SignedInstalledProof(WindowsFileFence f,byte[] receiptBytes,Inputs? input,out Dictionary<string,string> pins) {
+            var receipt=InstallReceipt.Parse(receiptBytes);pins=new Dictionary<string,string>(StringComparer.Ordinal);
+            if(input!=null && MatchesInstalledProof(f,receipt,input.Update)){input.PriorDescriptor=input.PriorSignature=null;return input.Update;}
+            var state=receipt.Channels??throw Bad("SignedInstalledProofRequired");
+            var digest=state.ActiveChannel=="Stable"?state.StableDescriptor:state.BetaDescriptor;
+            var receiptHash=UpdateTrust.Hash(receiptBytes);VerifiedUpdateDescriptor? selected=null;
+            foreach(var entry in UpdateRecovery.Scan(f)) {
+                if(entry.Pending || !entry.Committed || entry.Descriptor!=digest)continue;
+                var candidatePins=new Dictionary<string,string>(StringComparer.Ordinal);
+                var plan=ProofFile(f,entry.Work+"/plan",16384,candidatePins);
+                var lines=Encoding.ASCII.GetString(plan).Split('\n');var matches=0;
+                foreach(var line in lines)if(line.StartsWith("file="+InstallReceipt.Path+"\t",StringComparison.Ordinal)) {
+                    var row=line.Split('\t');
+                    if(row.Length!=5 || !Regex.IsMatch(row[3],@"\A[A-F0-9]{8}:[A-F0-9]{16}\z") || row[4]!=receiptHash)throw Bad("HistoricalReceiptMismatch");
+                    matches++;
+                }
+                if(matches!=1)throw Bad("HistoricalReceiptMismatch");
+                foreach(var marker in new[]{"commit-intent","committed"})
+                    if(Encoding.ASCII.GetString(ProofFile(f,entry.Work+"/"+marker,128,candidatePins))!=UpdateTrust.Hash(plan)+"\n")throw Bad("HistoricalCommitMismatch");
+                var bytes=ProofFile(f,entry.Stage+"/descriptor.bin",UpdateTrust.MaxDescriptorBytes,candidatePins);
+                var signature=ProofFile(f,entry.Stage+"/signature.bin",UpdateTrust.MaxSignatureBytes,candidatePins);
+                var key=ProofFile(f,entry.Stage+"/key-id.bin",40,candidatePins);
+                foreach(var b in key)if(b>127)throw Bad("HistoricalSigningKeyInvalid");
+                var keyId=Encoding.ASCII.GetString(key);
+                if(!Regex.IsMatch(keyId,@"\A[A-Za-z0-9_-]{1,40}\z"))throw Bad("HistoricalSigningKeyInvalid");
+                var envelope=new DetachedSignature(keyId,signature).Bytes();
+                var verified=VerifyUpdateProof(bytes,envelope);
+                if(!MatchesInstalledProof(f,receipt,verified))throw Bad("HistoricalOwnedProofMismatch");
+                if(selected==null){selected=verified;pins=candidatePins;}
+                else if(selected.DescriptorSha256!=verified.DescriptorSha256)throw Bad("HistoricalProofAmbiguous");
+            }
+            // New whole installations retain the already verified proof with their durable intent.
+            foreach(var work in IntentDirectories(f)) {
+                f.AssertPrivateDirectory(work);
+                using(var descriptor=Maybe(f,work+"/signed-update.descriptor"))using(var signature=Maybe(f,work+"/signed-update.signature")) {
+                    if(descriptor==null && signature==null)continue;
+                    if(descriptor==null || signature==null)throw Bad("WholeProofIncomplete");
+                    var candidatePins=new Dictionary<string,string>(StringComparer.Ordinal);
+                    var plan=ProofFile(f,work+"/plan",262144,candidatePins);var intent=WholeIntent.Parse(plan);
+                    if(intent.Root!=f.RootIdentity.Text || intent.Work!=LogicalIntent(work) || intent.WorkId!=f.DirectoryIdentity(work).Text)throw Bad("WholeProofRootMismatch");
+                    using(var committed=Maybe(f,work+"/committed")) {
+                        if(committed==null)continue;
+                        if(Encoding.ASCII.GetString(UpdateTicket.Read(committed,128))!=UpdateTrust.Hash(plan)+"\n")throw Bad("WholeProofCommitMismatch");
+                        candidatePins.Add(work+"/committed",committed.Hash());
+                    }
+                    var bytes=UpdateTicket.Read(descriptor,UpdateTrust.MaxDescriptorBytes);
+                    var envelope=UpdateTicket.Read(signature,1024);
+                    var verified=VerifyUpdateProof(bytes,envelope);
+                    if(!MatchesInstalledProof(f,receipt,verified))continue;
+                    var target=ProofFile(f,work+"/target-receipt",16384,candidatePins);
+                    if(UpdateTrust.Hash(target)!=intent.Receipt)throw Bad("WholeProofReceiptMismatch");
+                    if(intent.Receipt!=receiptHash)continue; // A valid older installation generation is not this receipt.
+                    candidatePins.Add(work+"/signed-update.descriptor",descriptor.Hash());
+                    candidatePins.Add(work+"/signed-update.signature",signature.Hash());
+                    // Multiple deliveries of the exact same signed owned8 proof are harmless.
+                    if(selected!=null && selected.DescriptorSha256!=verified.DescriptorSha256)throw Bad("HistoricalProofAmbiguous");
+                    if(selected==null){selected=verified;pins=candidatePins;}
+                }
+            }
+            if(selected==null && input!=null && input.PriorProof(digest)) {
+                var verified=VerifyUpdateProof(input.PriorDescriptor!,input.PriorSignature!);
+                if(!MatchesInstalledProof(f,receipt,verified))throw Bad("PriorInstalledProofMismatch");
+                return verified;
+            }
+            return selected??throw Bad("SignedInstalledProofRequired");
+        }
+        internal static string RemovedInstallEvidence(string root,string package,string version,byte[] receiptBytes) {
+            using(var input=new Inputs(root,package,version))using(var f=new WindowsFileFence(root)) {
+                UpdateLaunchGate.Check(f);UpdateTransaction.ReadHighWater(f);
+                using var history=UpdateTransaction.ValidateHistory(f,InstallReceipt.Parse(receiptBytes));
+                var proof=SignedInstalledProof(f,receiptBytes,input,out var pins);
+                var names=new List<string>(pins.Keys);names.Sort(StringComparer.Ordinal);
+                var text="BetterAstralParty.RemovedInstallEvidence/v1\nroot="+f.RootIdentity.Text+"\nversion="+UpdateVersion.Parse(proof.Version).Tag+
+                    "\ndescriptor="+proof.DescriptorSha256+"\nupdate-protocol=3\nsettings-schema=1\n";
+                foreach(var name in names)text+="proof="+name+"="+pins[name]+"\n";
+                return text;
+            }
+        }
+        internal static void ValidatePartialRemoval(string root) {ValidatePartialRemovalCore(root,null);}
+        internal static void ValidatePartialRemovalWithPackage(string root,string package,string version) {
+            using(var input=new Inputs(root,package,version))ValidatePartialRemovalCore(root,input);
+        }
+        private static void ValidatePartialRemovalCore(string root,Inputs? input) {
             using(var fence=new WindowsFileFence(root))using(var file=fence.OpenFile(InstallReceipt.Path)) {
                 UpdateLaunchGate.Check(fence);UpdateTransaction.ReadHighWater(fence);
-                var receipt=InstallReceipt.Parse(UpdateTicket.Read(file,16384));
-                foreach(var name in InstallReceipt.Owned)using(var owned=Maybe(fence,name))if(owned==null ? name==UpdateTrust.PluginPath : owned.Hash()!=receipt.Files[name])throw Bad();
-                using(var plugin=fence.OpenFile(UpdateTrust.PluginPath)) {
-                    var current=InstalledPluginMetadata.Read(UpdateTicket.Read(plugin,UpdateTrust.MaxFileBytes));
-                    var state=receipt.Channels;
-                    if(state==null || state.Root!=fence.RootIdentity.Text || state.ActiveVersion!=current.Version || state.ActiveRepositoryId!=ReleaseFeedPolicy.For(state.ActiveChannel).RepositoryId || current.UpdateProtocol!=2 || current.SettingsSchema!=1)throw Bad();
+                using var history=UpdateTransaction.ValidateHistory(fence,InstallReceipt.Parse(UpdateTicket.Read(file,16384)));
+                var bytes=UpdateTicket.Read(file,16384);var receipt=InstallReceipt.Parse(bytes);
+                foreach(var name in InstallReceipt.Owned)using(var owned=Maybe(fence,name))if(owned!=null && owned.Hash()!=receipt.Files[name])throw Bad("OwnedFileChanged");
+                using(var plugin=Maybe(fence,UpdateTrust.PluginPath)) {
+                    if(plugin==null)SignedInstalledProof(fence,bytes,input,out _);
+                    else {
+                        var current=InstalledPluginMetadata.Read(UpdateTicket.Read(plugin,UpdateTrust.MaxFileBytes));
+                        var state=receipt.Channels;
+                        if(state==null || state.Root!=fence.RootIdentity.Text || state.ActiveVersion!=current.Version || state.ActiveRepositoryId!=ReleaseFeedPolicy.For(state.ActiveChannel).RepositoryId || current.UpdateProtocol!=3 || current.SettingsSchema!=1)throw Bad();
+                    }
                 }
                 if(HelperDelivery.Fingerprint(fence,UpdateTrust.Production())==null)throw Bad();
             }
@@ -99,7 +225,7 @@ namespace BetterAstralParty.Updating {
                 if(text.Length>2048) throw Bad();var l=Lines(Ascii(text),12,"BetterAstralParty.WholeObservation/v1");
                 var keys=new[]{"root=","plugin=","receipt=","image=","helper-receipt=","water=","update=","helper=","mode=","nonce="};var v=new string[10];
                 for(var i=0;i<keys.Length;i++){if(!l[i+1].StartsWith(keys[i],StringComparison.Ordinal))throw Bad();v[i]=l[i+1].Substring(keys[i].Length);}
-                if(!Regex.IsMatch(v[0],@"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !DigestOrAbsent(v[1]) || !DigestOrAbsent(v[2]) || !IsSlot(v[3]) || !IsSlot(v[4]) || !IsSlot(v[5]) || !Digest(v[6]) || !Digest(v[7]) || !Regex.IsMatch(v[8],@"\A(?:Fresh|OriginalDev|SignedLegacy|Current|Recovery)\z") || !Regex.IsMatch(v[9],@"\A[0-9a-f]{32}\z"))throw Bad();
+                if(!Regex.IsMatch(v[0],@"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !DigestOrAbsent(v[1]) || !DigestOrAbsent(v[2]) || !IsSlot(v[3]) || !IsSlot(v[4]) || !IsSlot(v[5]) || !Digest(v[6]) || !Digest(v[7]) || !Regex.IsMatch(v[8],@"\A(?:Fresh|HelperUpgrade|Current|Recovery)\z") || !Regex.IsMatch(v[9],@"\A[0-9a-f]{32}\z"))throw Bad();
                 var o=new Observation {Root=v[0],Plugin=v[1],Receipt=v[2],Image=v[3],HelperReceipt=v[4],Water=v[5],Update=v[6],Helper=v[7],Mode=v[8],Nonce=v[9]};if(o.Text()!=text)throw Bad();return o;
             }
         }
@@ -114,7 +240,7 @@ namespace BetterAstralParty.Updating {
             foreach(var e in UpdateRecovery.Scan(f))if(e.Pending)throw Bad("UpdateTransactionPending"); // Old signed helper must first finish old journals.
             if(HelperDelivery.PendingInstall(f)) {
                 if(pending.Count!=1)throw Bad("HelperInstallPending");
-                foreach(var d in Directory.GetDirectories(f.Root,"bap-helper-*",SearchOption.TopDirectoryOnly)) {
+                foreach(var d in Directory.GetDirectories(f.Root,"bap-v3-helper-*",SearchOption.TopDirectoryOnly)) {
                     var work=Path.GetFileName(d);f.AssertPrivateDirectory(work);
                     using(var plan=Maybe(f,work+"/plan"))using(var committed=Maybe(f,work+"/committed"))
                         if(plan!=null && committed==null && work!=pending[0].HelperWork)throw Bad("HelperInstallConflict");
@@ -127,29 +253,33 @@ namespace BetterAstralParty.Updating {
             foreach(var entry in input.Update.Files)if(receipt.Files[entry.Path]!=entry.Sha256)throw Bad();
             return receipt;
         }
-        private static void Target(WindowsFileFence f,Inputs input,string receiptHash,WindowsProcessGuard.LaunchLease? processes=null) {
-            using(var file=f.OpenFile(InstallReceipt.Path)) {
-                if(file.Hash()!=receiptHash)throw Bad();TargetReceipt(f,input,UpdateTicket.Read(file,16384));
+        private static bool MatchesTarget(WindowsFileFence f,Inputs input,string receiptHash,WindowsProcessGuard.LaunchLease? processes=null) {
+            using(var file=Maybe(f,InstallReceipt.Path)) {
+                if(file==null || file.Hash()!=receiptHash)return false;TargetReceipt(f,input,UpdateTicket.Read(file,16384));
                 foreach(var entry in input.Update.Files) {
-                    if(processes!=null && entry.Path=="BetterAstralParty-Launcher.exe") {if(processes.ImageHash(f.Full(entry.Path))!=entry.Sha256)throw Bad();}
-                    else using(var payload=f.OpenFile(entry.Path))if(payload.Hash()!=entry.Sha256)throw Bad();
+                    if(processes!=null && entry.Path=="BetterAstralParty-Launcher.exe") {if(processes.ImageHash(f.Full(entry.Path))!=entry.Sha256)return false;}
+                    else using(var payload=Maybe(f,entry.Path))if(payload==null || payload.Hash()!=entry.Sha256)return false;
                 }
+                return true;
             }
         }
+        private static void Target(WindowsFileFence f,Inputs input,string receiptHash,WindowsProcessGuard.LaunchLease? processes=null) {
+            if(!MatchesTarget(f,input,receiptHash,processes))throw Bad();
+        }
         internal static void ValidateWholeChannel(ReceiptChannelState? state,string root,string currentVersion,int currentProtocol,int currentSettings,VerifiedUpdateDescriptor incoming,string? high) {
-            if(state==null) {if(incoming.Channel!="Beta")throw Bad();return;}
+            if(state==null)throw Bad();
             if(state.Root!=root || state.ActiveVersion!=currentVersion || state.ActiveRepositoryId!=ReleaseFeedPolicy.For(state.ActiveChannel).RepositoryId)throw Bad();
-            if(state.ActiveChannel==incoming.Channel)return;
             // The chosen, signed whole package may switch channels only by advancing the installed version.
             var feed=ReleaseFeedPolicy.For(incoming.Channel);
-            if(currentProtocol!=2 || currentSettings!=1 || incoming.Protocol!=2 || incoming.SettingsSchema!=1 || incoming.Files.Count!=8
+            if(currentProtocol!=3 || currentSettings!=1 || incoming.Protocol!=3 || incoming.SettingsSchema!=1 || incoming.Files.Count!=8
                 || incoming.Repository!=feed.Repository || incoming.RepositoryId!=feed.RepositoryId
                 || !(incoming.ReleaseId>0 && incoming.AssetId>0 || incoming.ReleaseId==0 && incoming.AssetId==0))throw Bad();
+            if(state.ActiveChannel==incoming.Channel)return;
             var next=UpdateVersion.Parse(incoming.Version);
             if(next.CompareTo(UpdateVersion.Parse(currentVersion))<=0 || high!=null && next.CompareTo(UpdateVersion.Parse(high))<=0)
                 throw new UpdateValidationException(UpdateFailure.NotNewer);
         }
-        private static string Observe(string root,string package,string version) {
+        private static string Observe(string root,string package,string version,string? review=null) {
             using(var input=new Inputs(root,package,version))using(var f=new WindowsFileFence(root)) {
                 var pending=Scan(f);OtherState(f,pending);if(ScanIntents(f).Count!=0)throw Bad();
                 var o=new Observation {Root=f.RootIdentity.Text,Update=input.Update.DescriptorSha256,Helper=input.Helper.DescriptorHash};
@@ -160,15 +290,21 @@ namespace BetterAstralParty.Updating {
                     o.Receipt=receiptFile?.Hash()??"-";
                     if(receiptFile!=null) {
                         var receipt=InstallReceipt.Parse(UpdateTicket.Read(receiptFile,16384));
-                        foreach(var name in InstallReceipt.Owned)using(var file=Maybe(f,name)) {
-                            if(file==null && name==UpdateTrust.PluginPath)throw Bad("OwnedPluginMissing");
-                            if(file!=null && file.Hash()!=receipt.Files[name])throw Bad("OwnedFileChanged");
-                        }
-                        using(var plugin=f.OpenFile(UpdateTrust.PluginPath)) {
-                            o.Plugin=plugin.Hash();var current=InstalledPluginMetadata.Read(UpdateTicket.Read(plugin,UpdateTrust.MaxFileBytes));var cmp=UpdateVersion.Parse(version).CompareTo(UpdateVersion.Parse(current.Version));
+                        using var history=UpdateTransaction.ValidateHistory(f,receipt);
+                        using(var plugin=Maybe(f,UpdateTrust.PluginPath)) {
+                            var signed=plugin==null || review!=null ? SignedInstalledProof(f,UpdateTicket.Read(receiptFile,16384),input,out _) : null;
+                            if(review!=null)ValidateReview(f,input,review,receipt, signed??throw Bad("SignedInstalledProofRequired"),CaptureSnapshot(f,receiptFile,plugin));
+                            o.Plugin=plugin?.Hash()??"-";
+                            if(plugin!=null && o.Plugin!=receipt.Files[UpdateTrust.PluginPath] && review==null)throw Bad("OwnedFileChanged");
+                            foreach(var name in InstallReceipt.Owned)if(name!=UpdateTrust.PluginPath)using(var owned=Maybe(f,name))
+                                if(owned!=null && owned.Hash()!=receipt.Files[name] && review==null)throw Bad("OwnedFileChanged");
+                            var current=plugin!=null && review==null?InstalledPluginMetadata.Read(UpdateTicket.Read(plugin,UpdateTrust.MaxFileBytes)):null;
+                            var currentVersion=current?.Version??UpdateVersion.Parse(signed!.Version).Tag;
+                            var protocol=current?.UpdateProtocol??signed!.Protocol;var schema=current?.SettingsSchema??signed!.SettingsSchema;
+                            var cmp=UpdateVersion.Parse(version).CompareTo(UpdateVersion.Parse(currentVersion));
                             if(cmp<0)throw new UpdateValidationException(UpdateFailure.NotNewer);
                             if(cmp==0)foreach(var entry in input.Update.Files)if(receipt.Files[entry.Path]!=entry.Sha256)throw new UpdateValidationException(UpdateFailure.NotNewer);
-                            ValidateWholeChannel(receipt.Channels,o.Root,current.Version,current.UpdateProtocol,current.SettingsSchema,input.Update,high);
+                            ValidateWholeChannel(receipt.Channels,o.Root,currentVersion,protocol,schema,input.Update,high);
                         }
                     } else {
                         foreach(var name in InstallReceipt.Owned)using(var file=Maybe(f,name))if(file!=null)throw Bad("InstallReceiptMissing");
@@ -182,12 +318,11 @@ namespace BetterAstralParty.Updating {
                 using(var image=Maybe(f,HelperDescriptor.Image))o.Image=Slot(image);
                 using(var receipt=Maybe(f,HelperDelivery.Receipt))o.HelperReceipt=Slot(receipt);
                 if(o.Image=="-\t-" && o.HelperReceipt=="-\t-"){if(o.Receipt!="-")throw Bad("HelperEvidenceMissing");o.Mode="Fresh";}
-                else if(o.Image.EndsWith("\t"+OriginalDevImage,StringComparison.Ordinal) && o.Plugin==OriginalDevPlugin && o.Receipt!="-" && o.HelperReceipt=="-\t-" && Directory.GetDirectories(f.Root,"bap-helper-*",SearchOption.TopDirectoryOnly).Length==0)o.Mode="OriginalDev";
                 else {
                     var actual=HelperDelivery.Fingerprint(f,UpdateTrust.Production());if(actual==null || o.Receipt=="-")throw Bad();
                     using(var image=f.OpenLaunchImage(HelperDescriptor.Image)) {
                         var bytes=UpdateTicket.Read(image,UpdateTrust.MaxFileBytes);var matched=false;
-                        foreach(var dir in Directory.GetDirectories(f.Root,"bap-helper-*",SearchOption.TopDirectoryOnly)) {
+                        foreach(var dir in Directory.GetDirectories(f.Root,"bap-v3-helper-*",SearchOption.TopDirectoryOnly)) {
                             var work=Path.GetFileName(dir);
                             using(var plan=f.OpenFile(work+"/plan")) {
                                 var lines=Encoding.ASCII.GetString(UpdateTicket.Read(plan,2048)).Split('\n');
@@ -201,17 +336,99 @@ namespace BetterAstralParty.Updating {
                         }
                         if(!matched)throw Bad();
                     }
-                    o.Mode=actual==input.Helper.Sha256 && HelperDelivery.Fingerprint(f,UpdateTrust.Production(),2)==actual ? "Current":"SignedLegacy";
+                    o.Mode=actual==input.Helper.Sha256 && HelperDelivery.Fingerprint(f,UpdateTrust.Production(),3)==actual ? "Current":"HelperUpgrade";
                 }
                 return o.Text();
             }
         }
-        private sealed class PreparedObservation {internal string Text="",Receipt="";}
+        private sealed class PreparedObservation {internal string Text="",Receipt="",Snapshot="";internal string? Review;}
         private static readonly Dictionary<string,PreparedObservation> ApprovedObservations=new Dictionary<string,PreparedObservation>(StringComparer.Ordinal);
         internal static string Validate(string root,string package,string version) {
             var o=Observation.Parse(Observe(root,package,version));o.Nonce=Guid.NewGuid().ToString("N");
             lock(ApprovedObservations) {if(ApprovedObservations.Count>=32)throw Bad();ApprovedObservations.Add(o.Nonce,new PreparedObservation {Text=o.Text()});}
             return o.Text();
+        }
+        internal static string ValidateReviewed(string root,string package,string version,string review) {
+            var o=Observation.Parse(Observe(root,package,version,review));o.Nonce=Guid.NewGuid().ToString("N");
+            using(var f=new WindowsFileFence(root)) {
+                var snapshot=CaptureSnapshot(f);
+                lock(ApprovedObservations) {
+                    if(ApprovedObservations.Count>=32)throw Bad();
+                    ApprovedObservations.Add(o.Nonce,new PreparedObservation{Text=o.Text(),Review=review,Snapshot=snapshot});
+                }
+            }
+            return o.Text();
+        }
+        internal static string VerifiedInstalledState(string root,string package,string version) {
+            using(var input=new Inputs(root,package,version))using(var f=new WindowsFileFence(root))using(var receipt=f.OpenFile(InstallReceipt.Path)) {
+                UpdateLaunchGate.Check(f);UpdateTransaction.ReadHighWater(f);
+                var proof=SignedInstalledProof(f,UpdateTicket.Read(receipt,16384),input,out _);
+                return "BetterAstralParty.VerifiedInstalledState/v1\nroot="+f.RootIdentity.Text+"\nversion="+UpdateVersion.Parse(proof.Version).Tag+
+                    "\nupdate-protocol="+proof.Protocol+"\nsettings-schema="+proof.SettingsSchema+"\n";
+            }
+        }
+        private static string[] SnapshotPaths() {
+            var names=new List<string>(InstallReceipt.Owned);names.Add(InstallReceipt.Path);names.Add(UpdateTransaction.HighWaterPath);names.Sort(StringComparer.Ordinal);return names.ToArray();
+        }
+        private static string CaptureSnapshot(WindowsFileFence f,WindowsFileFence.FileLease? receipt=null,WindowsFileFence.FileLease? plugin=null) {
+            var text="BetterAstralParty.OwnedSnapshot/v1\nroot="+f.RootIdentity.Text+"\n";
+            foreach(var name in SnapshotPaths()) {
+                // Reuse exclusive leases already held by observation instead of reopening them.
+                var held=name==InstallReceipt.Path?receipt:name==UpdateTrust.PluginPath?plugin:null;
+                if(held!=null)text+="file="+name+"\t"+Slot(held)+"\n";
+                else using(var file=Maybe(f,name))text+="file="+name+"\t"+Slot(file)+"\n";
+            }
+            return text;
+        }
+        private static Dictionary<string,string> ParseSnapshot(string text,string root) {
+            var names=SnapshotPaths();var l=Lines(Ascii(text),names.Length+3,"BetterAstralParty.OwnedSnapshot/v1");
+            if(l[1]!="root="+root)throw Bad("ReviewSnapshotRootMismatch");
+            var result=new Dictionary<string,string>(StringComparer.Ordinal);
+            for(var i=0;i<names.Length;i++) {
+                var prefix="file="+names[i]+"\t";
+                if(!l[i+2].StartsWith(prefix,StringComparison.Ordinal))throw Bad("ReviewSnapshotPathInvalid");
+                var slot=l[i+2].Substring(prefix.Length);if(!IsSlot(slot))throw Bad("ReviewSnapshotSlotInvalid");result.Add(names[i],slot);
+            }
+            return result;
+        }
+        private static void ValidateReview(WindowsFileFence f,Inputs input,string review,InstallReceipt prior,VerifiedUpdateDescriptor signed,string snapshot) {
+            if(review.Length<2 || Encoding.UTF8.GetByteCount(review)>16384)throw Bad("ReviewPlanLimit");
+            var plan=new InstallReceipt.Json(Encoding.UTF8.GetBytes(review),16384,32,8192).Parse() as Dictionary<string,object?>;
+            if(plan==null || plan.Count!=9 || !plan.TryGetValue("schema",out var schema) || !Equals(schema,1))throw Bad("ReviewPlanShape");
+            string Value(string name) {
+                if(!plan.TryGetValue(name,out var v) || !(v is string s))throw Bad("ReviewPlanShape");return s;
+            }
+            if(Value("purpose")!="manual-recovery" || Value("packageManifestSha256")!=input.ManifestHash || Value("gameRoot")!=f.Root ||
+                Value("gameRootIdentity")!=f.RootIdentity.Text || Value("toVersion")!=input.Update.Version ||
+                Value("fromVersion")!=UpdateVersion.Parse(signed.Version).Tag || !MatchesInstalledProof(f,prior,signed))throw Bad("ReviewPlanBindingMismatch");
+            var slots=ParseSnapshot(snapshot,f.RootIdentity.Text);
+            var receiptSlot=slots[InstallReceipt.Path].Split('\t');
+            if(receiptSlot.Length!=2 || receiptSlot[1]!=Value("receiptSha256"))throw Bad("ReviewReceiptMismatch");
+            if(!plan.TryGetValue("observedFiles",out var observedValue) || !(observedValue is Dictionary<string,object?> observed) || observed.Count!=slots.Count)throw Bad("ReviewObservedSetInvalid");
+            foreach(var pair in slots) {
+                var parts=pair.Value.Split('\t');var expected=parts[1]=="-"?null:parts[1];
+                if(!observed.TryGetValue(pair.Key,out var hash) || !Equals(hash,expected))throw Bad("ReviewObservedHashMismatch");
+            }
+            var high=UpdateTransaction.ReadHighWater(f);var next=UpdateVersion.Parse(input.Update.Version);
+            if(next.CompareTo(UpdateVersion.Parse(signed.Version))<0 || high!=null && next.CompareTo(UpdateVersion.Parse(high))<0)throw new UpdateValidationException(UpdateFailure.NotNewer);
+            if(next.CompareTo(UpdateVersion.Parse(signed.Version))==0 && input.Update.DescriptorSha256!=signed.DescriptorSha256)throw new UpdateValidationException(UpdateFailure.NotNewer);
+        }
+        private static void PriorProofBytes(WindowsFileFence f,Inputs input,byte[] receipt,out byte[] descriptor,out byte[] signature) {
+            var verified=SignedInstalledProof(f,receipt,input,out var pins);
+            if(pins.Count==0){descriptor=input.PriorDescriptor??input.UpdateDescriptorBytes;signature=input.PriorSignature??input.UpdateSignatureBytes;return;}
+            string? d=null,s=null,k=null;
+            foreach(var path in pins.Keys) {
+                if(path.EndsWith("/descriptor.bin",StringComparison.Ordinal) || path.EndsWith("/signed-update.descriptor",StringComparison.Ordinal))d=path;
+                else if(path.EndsWith("/signature.bin",StringComparison.Ordinal) || path.EndsWith("/signed-update.signature",StringComparison.Ordinal))s=path;
+                else if(path.EndsWith("/key-id.bin",StringComparison.Ordinal))k=path;
+            }
+            if(d==null || s==null)throw Bad("ReviewPriorProofMissing");
+            byte[] ReadPin(string path,long limit) {
+                using(var file=f.OpenFile(path)){if(file.Hash()!=pins[path])throw Bad("ReviewPriorProofChanged");return UpdateTicket.Read(file,limit);}
+            }
+            descriptor=ReadPin(d,UpdateTrust.MaxDescriptorBytes);
+            signature=k==null?ReadPin(s,1024):new DetachedSignature(Encoding.ASCII.GetString(ReadPin(k,40)),ReadPin(s,UpdateTrust.MaxSignatureBytes)).Bytes();
+            if(VerifyUpdateProof(descriptor,signature).DescriptorSha256!=verified.DescriptorSha256)throw Bad("ReviewPriorProofChanged");
         }
         private static PreparedObservation Approved(Observation o) {
             lock(ApprovedObservations) {PreparedObservation value;if(!ApprovedObservations.TryGetValue(o.Nonce,out value!) || value.Text!=o.Text())throw Bad();return value;}
@@ -219,28 +436,26 @@ namespace BetterAstralParty.Updating {
         private static string FindHash(VerifiedUpdateDescriptor d,string name){foreach(var file in d.Files)if(file.Path==name)return file.Sha256;throw Bad();}
         internal static string PrepareReceipt(string root,string package,string version,string observation,string loaderBefore) {
             var o=Observation.Parse(observation);
-            var approved=Approved(o);var observed=Observation.Parse(Observe(root,package,version));observed.Nonce=o.Nonce;
+            var approved=Approved(o);var observed=Observation.Parse(Observe(root,package,version,approved.Review));observed.Nonce=o.Nonce;
             if(observed.Text()!=observation)throw Bad();
             using(var input=new Inputs(root,package,version))using(var f=new WindowsFileFence(root)) {
                 MatchInputs(f,input,o);InstallReceipt old;
                 using(var file=Maybe(f,InstallReceipt.Path)) {
                     if(file!=null) {
                         old=InstallReceipt.Parse(UpdateTicket.Read(file,16384));
-                        using(var plugin=f.OpenFile(UpdateTrust.PluginPath)) {
-                            var current=InstalledPluginMetadata.Read(UpdateTicket.Read(plugin,UpdateTrust.MaxFileBytes));
-                            ValidateWholeChannel(old.Channels,o.Root,current.Version,current.UpdateProtocol,current.SettingsSchema,input.Update,UpdateTransaction.ReadHighWater(f));
+                        using(var plugin=Maybe(f,UpdateTrust.PluginPath)) {
+                            var current=plugin!=null && approved.Review==null?InstalledPluginMetadata.Read(UpdateTicket.Read(plugin,UpdateTrust.MaxFileBytes)):null;
+                            var signed=current==null?SignedInstalledProof(f,UpdateTicket.Read(file,16384),input,out _):null;
+                            ValidateWholeChannel(old.Channels,o.Root,current?.Version??UpdateVersion.Parse(signed!.Version).Tag,current?.UpdateProtocol??signed!.Protocol,current?.SettingsSchema??signed!.SettingsSchema,input.Update,UpdateTransaction.ReadHighWater(f));
                         }
                     }
                     else {
                         if(loaderBefore!="true" && loaderBefore!="false" && loaderBefore!="null")throw Bad();
-                        var json=new StringBuilder("{\"schema\":1,\"owner\":\""+InstalledPluginMetadata.Owner+"\",\"loaderBefore\":"+loaderBefore+",\"files\":[");
-                        for(var i=0;i<InstallReceipt.Owned.Length;i++){if(i!=0)json.Append(',');var name=InstallReceipt.Owned[i];json.Append("{\"path\":\"").Append(name).Append("\",\"sha256\":\"").Append(FindHash(input.Update,name)).Append("\"}");}old=InstallReceipt.Parse(Ascii(json.Append("]}").ToString()));
+                        old=InstallReceipt.Parse(InstallReceipt.Create(o.Root,input.Update,loaderBefore=="null"?(bool?)null:loaderBefore=="true"));
                     }
                 }
-                string? descriptor=null;var high=UpdateTransaction.ReadHighWater(f);
-                if(high!=null)using(var water=f.OpenFile(UpdateTransaction.HighWaterPath))descriptor=Encoding.ASCII.GetString(UpdateTicket.Read(water,2048)).Split('\n')[3].Substring(11);
                 var target=InstallReceipt.Parse(old.Updated(input.Update));
-                var result=target.InitializeChannel(o.Root,input.Update,high,descriptor);
+                var result=target.InitializeChannel(o.Root,input.Update);
                 lock(ApprovedObservations)approved.Receipt=UpdateTrust.Hash(result);return Encoding.ASCII.GetString(result);
             }
         }
@@ -250,17 +465,17 @@ namespace BetterAstralParty.Updating {
             internal static MigrationPlan Parse(byte[] bytes) {
                 var l=Lines(bytes,15,"BetterAstralParty.WholeHelperMigration/v1");var keys=new[]{"root=","work=","work-id=","helper-work=","helper-work-id=","update=","helper=","receipt=","water=","old-image=","old-receipt=","new-image=","new-receipt="};var v=new string[13];
                 for(var i=0;i<keys.Length;i++){if(!l[i+1].StartsWith(keys[i],StringComparison.Ordinal))throw Bad();v[i]=l[i+1].Substring(keys[i].Length);}
-                if(!Regex.IsMatch(v[0],@"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !Regex.IsMatch(v[1],@"\Abap-helperbridge-[0-9a-f]{32}\z") || !Regex.IsMatch(v[3],@"\Abap-helper-[0-9a-f]{32}\z") || !Regex.IsMatch(v[2],@"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !Regex.IsMatch(v[4],@"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !Digest(v[5]) || !Digest(v[6]) || !Digest(v[7]) || !IsSlot(v[8]) || !IsSlot(v[9]) || !IsSlot(v[10]) || !IsSlot(v[11]) || v[11]=="-\t-" || !IsSlot(v[12]) || v[12]=="-\t-")throw Bad();
+                if(!Regex.IsMatch(v[0],@"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !Regex.IsMatch(v[1],@"\Abap-v3-helperbridge-[0-9a-f]{32}\z") || !Regex.IsMatch(v[3],@"\Abap-v3-helper-[0-9a-f]{32}\z") || !Regex.IsMatch(v[2],@"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !Regex.IsMatch(v[4],@"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !Digest(v[5]) || !Digest(v[6]) || !Digest(v[7]) || !IsSlot(v[8]) || !IsSlot(v[9]) || !IsSlot(v[10]) || !IsSlot(v[11]) || v[11]=="-\t-" || !IsSlot(v[12]) || v[12]=="-\t-")throw Bad();
                 var p=new MigrationPlan {Root=v[0],Work=v[1],WorkId=v[2],HelperWork=v[3],HelperWorkId=v[4],Update=v[5],Helper=v[6],Receipt=v[7],Water=v[8],OldImage=v[9],OldReceipt=v[10],NewImage=v[11],NewReceipt=v[12]};if(UpdateTrust.Hash(Ascii(p.Text()))!=UpdateTrust.Hash(bytes))throw Bad();return p;
             }
         }
         private static List<MigrationPlan> Scan(WindowsFileFence f) {
-            var result=new List<MigrationPlan>();var dirs=Directory.GetDirectories(f.Root,"bap-helperbridge-*",SearchOption.TopDirectoryOnly);if(dirs.Length>64)throw Bad();
+            var result=new List<MigrationPlan>();var dirs=Directory.EnumerateDirectories(f.Root,"bap-v3-helperbridge-*",SearchOption.TopDirectoryOnly);
             foreach(var d in dirs) {
-                var work=Path.GetFileName(d);if(!Regex.IsMatch(work,@"\Abap-helperbridge-[0-9a-f]{32}\z"))throw Bad();f.AssertPrivateDirectory(work);
+                var work=Path.GetFileName(d);if(!Regex.IsMatch(work,@"\Abap-v3-helperbridge-[0-9a-f]{32}\z"))throw Bad();f.AssertPrivateDirectory(work);
                 using(var file=Maybe(f,work+"/plan")) {
                     if(file==null)throw Bad();var bytes=UpdateTicket.Read(file,4096);var p=MigrationPlan.Parse(bytes);if(p.Root!=f.RootIdentity.Text || p.Work!=work || p.WorkId!=f.DirectoryIdentity(work).Text)throw Bad();
-                    using(var marker=Maybe(f,work+"/committed")) {if(marker==null)result.Add(p);else if(Encoding.ASCII.GetString(UpdateTicket.Read(marker,128))!=UpdateTrust.Hash(bytes)+"\n")throw Bad();}
+                    using(var marker=Maybe(f,work+"/committed")) {if(marker==null){if(result.Count>=64)throw Bad();result.Add(p);}else if(Encoding.ASCII.GetString(UpdateTicket.Read(marker,128))!=UpdateTrust.Hash(bytes)+"\n")throw Bad();}
                 }
             }return result;
         }
@@ -301,44 +516,69 @@ namespace BetterAstralParty.Updating {
                 string imagePath,receiptPath;
                 using(var old=Maybe(f,HelperDescriptor.Image))imagePath=Slot(old)==p.OldImage?HelperDescriptor.Image:p.Work+"/old-image";
                 using(var old=Maybe(f,HelperDelivery.Receipt))receiptPath=Slot(old)==p.OldReceipt?HelperDelivery.Receipt:p.Work+"/old-receipt";
-                if(p.OldReceipt=="-\t-") {if(p.OldImage.Split('\t')[1]!=OriginalDevImage)throw Bad();}
-                else if(HelperDelivery.ArchivedFingerprint(f,UpdateTrust.Production(),imagePath,receiptPath)!=p.OldImage.Split('\t')[1])throw Bad();
+                if(p.OldReceipt=="-\t-" || HelperDelivery.ArchivedFingerprint(f,UpdateTrust.Production(),imagePath,receiptPath)!=p.OldImage.Split('\t')[1])throw Bad();
             }
             Archive(f,p,HelperDescriptor.Image,p.OldImage,p.NewImage,"old-image",boundary);
             Archive(f,p,HelperDelivery.Receipt,p.OldReceipt,p.NewReceipt,"old-receipt",boundary);
             HelperDelivery.FinishWholeMigration(f,p.HelperWork,UpdateTrust.Production(),boundary);
             CheckItem(f,p,HelperDescriptor.Image,p.OldImage,p.NewImage,"image","old-image");
             CheckItem(f,p,HelperDelivery.Receipt,p.OldReceipt,p.NewReceipt,"receipt","old-receipt");
-            if(HelperDelivery.Fingerprint(f,UpdateTrust.Production(),2)!=input.Helper.Sha256)throw Bad();
+            if(HelperDelivery.Fingerprint(f,UpdateTrust.Production(),3)!=input.Helper.Sha256)throw Bad();
             Target(f,input,p.Receipt,processes);CheckPlan(f,input,p);
             boundary?.Invoke("before:bridge-committed");Write(f,p.Work+"/committed",Ascii(UpdateTrust.Hash(Ascii(p.Text()))+"\n"));boundary?.Invoke("after:bridge-committed");
         }
         // Intent files belong to a native private directory and bind exact root/object identities.
         // They grant no permission to adopt an unrelated helper or repair partial owned files.
         private sealed class WholeIntent {
-            internal string Root="",Work="",WorkId="",Observation="",Receipt="",Plugin="-\t-",OldReceipt="-\t-";
-            internal string Text(){return "BetterAstralParty.WholeInstallIntent/v1\nroot="+Root+"\nwork="+Work+"\nwork-id="+WorkId+"\nobservation="+Convert.ToBase64String(Ascii(Observation))+"\ntarget-receipt="+Receipt+"\nold-plugin="+Plugin+"\nold-receipt="+OldReceipt+"\n";}
+            internal string Root="",Work="",WorkId="",Observation="",Receipt="",Plugin="-\t-",OldReceipt="-\t-",Snapshot="",Review="",PriorDescriptor="",PriorSignature="";
+            internal string Text(){
+                var text=(Snapshot==""?"BetterAstralParty.WholeInstallIntent/v1":"BetterAstralParty.WholeInstallIntent/v2")+"\nroot="+Root+"\nwork="+Work+"\nwork-id="+WorkId+"\nobservation="+Convert.ToBase64String(Ascii(Observation))+"\ntarget-receipt="+Receipt+"\nold-plugin="+Plugin+"\nold-receipt="+OldReceipt+"\n";
+                return Snapshot==""?text:text+"snapshot="+Convert.ToBase64String(Ascii(Snapshot))+"\nreview="+Convert.ToBase64String(Encoding.UTF8.GetBytes(Review))+"\nprior-descriptor="+PriorDescriptor+"\nprior-signature="+PriorSignature+"\n";
+            }
             internal static WholeIntent Parse(byte[] bytes){
-                var l=Lines(bytes,9,"BetterAstralParty.WholeInstallIntent/v1");var keys=new[]{"root=","work=","work-id=","observation=","target-receipt=","old-plugin=","old-receipt="};var v=new string[7];
+                var v2=Encoding.ASCII.GetString(bytes).StartsWith("BetterAstralParty.WholeInstallIntent/v2\n",StringComparison.Ordinal);
+                var l=Lines(bytes,v2?13:9,v2?"BetterAstralParty.WholeInstallIntent/v2":"BetterAstralParty.WholeInstallIntent/v1");var keys=new[]{"root=","work=","work-id=","observation=","target-receipt=","old-plugin=","old-receipt="};var v=new string[7];
                 for(var i=0;i<keys.Length;i++){if(!l[i+1].StartsWith(keys[i],StringComparison.Ordinal))throw Bad();v[i]=l[i+1].Substring(keys[i].Length);}
-                if(!Regex.IsMatch(v[0],@"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !Regex.IsMatch(v[1],@"\Abap-wholeintent-[0-9a-f]{32}\z") || !Regex.IsMatch(v[2],@"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !Digest(v[4]) || !IsSlot(v[5]) || !IsSlot(v[6]))throw Bad();
+                if(!Regex.IsMatch(v[0],@"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !Regex.IsMatch(v[1],@"\Abap-v3-wholeintent-[0-9a-f]{32}\z") || !Regex.IsMatch(v[2],@"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !Digest(v[4]) || !IsSlot(v[5]) || !IsSlot(v[6]))throw Bad();
                 string observed;try{observed=Encoding.ASCII.GetString(Convert.FromBase64String(v[3]));}catch(FormatException){throw Bad();}
                 var o=WholeInstallBridge.Observation.Parse(observed);
-                if(o.Root!=v[0] || o.Nonce!="00000000000000000000000000000000" || o.Mode!="Fresh" && o.Mode!="OriginalDev" && o.Mode!="SignedLegacy")throw Bad();
+                if(o.Root!=v[0] || o.Nonce!="00000000000000000000000000000000" || o.Mode!="Fresh" && o.Mode!="HelperUpgrade" && !(v2 && o.Mode=="Current"))throw Bad();
                 var intent=new WholeIntent {Root=v[0],Work=v[1],WorkId=v[2],Observation=observed,Receipt=v[4],Plugin=v[5],OldReceipt=v[6]};
+                if(v2) {
+                    var extra=new[]{"snapshot=","review=","prior-descriptor=","prior-signature="};
+                    for(var i=0;i<extra.Length;i++)if(!l[i+8].StartsWith(extra[i],StringComparison.Ordinal))throw Bad("ReviewIntentShape");
+                    try {
+                        intent.Snapshot=Encoding.ASCII.GetString(Convert.FromBase64String(l[8].Substring(extra[0].Length)));
+                        intent.Review=new UTF8Encoding(false,true).GetString(Convert.FromBase64String(l[9].Substring(extra[1].Length)));
+                        intent.PriorDescriptor=l[10].Substring(extra[2].Length);intent.PriorSignature=l[11].Substring(extra[3].Length);
+                        if(Convert.FromBase64String(intent.PriorDescriptor).Length>UpdateTrust.MaxDescriptorBytes || Convert.FromBase64String(intent.PriorSignature).Length>1024 || intent.Review.Length>16384)throw Bad("ReviewIntentLimit");
+                    }catch(FormatException){throw Bad("ReviewIntentShape");}
+                    ParseSnapshot(intent.Snapshot,intent.Root);
+                    if(intent.OldReceipt=="-\t-")throw Bad("ReviewOriginalReceiptRequired");
+                }
                 if(UpdateTrust.Hash(Ascii(intent.Text()))!=UpdateTrust.Hash(bytes))throw Bad();return intent;
             }
         }
+        private static IEnumerable<string> IntentDirectories(WindowsFileFence f) {
+            foreach(var pattern in new[]{"bap-v3-wholeintent-*","bap-v3-wholehist-*"})
+                foreach(var directory in Directory.EnumerateDirectories(f.Root,pattern,SearchOption.TopDirectoryOnly)) {
+                    var work=Path.GetFileName(directory);LogicalIntent(work);yield return work;
+                }
+        }
+        private static string LogicalIntent(string work) {
+            if(!Regex.IsMatch(work,@"\Abap-v3-(?:wholeintent|wholehist)-[0-9a-f]{32}\z"))throw Bad("WholeProofPathInvalid");
+            return "bap-v3-wholeintent-"+work.Substring(work.LastIndexOf('-')+1);
+        }
         private static List<WholeIntent> ScanIntents(WindowsFileFence f){
-            var result=new List<WholeIntent>();var dirs=Directory.GetDirectories(f.Root,"bap-wholeintent-*",SearchOption.TopDirectoryOnly);if(dirs.Length>64)throw Bad();
-            foreach(var directory in dirs){
-                var work=Path.GetFileName(directory);if(!Regex.IsMatch(work,@"\Abap-wholeintent-[0-9a-f]{32}\z"))throw Bad();f.AssertPrivateDirectory(work);
+            var result=new List<WholeIntent>();
+            foreach(var work in IntentDirectories(f)){
+                f.AssertPrivateDirectory(work);
                 using(var file=f.OpenFile(work+"/plan")){
-                    var bytes=UpdateTicket.Read(file,8192);var intent=WholeIntent.Parse(bytes);
-                    if(intent.Root!=f.RootIdentity.Text || intent.Work!=work || intent.WorkId!=f.DirectoryIdentity(work).Text)throw Bad();
+                    var bytes=UpdateTicket.Read(file,262144);var intent=WholeIntent.Parse(bytes);
+                    if(intent.Root!=f.RootIdentity.Text || intent.Work!=LogicalIntent(work) || intent.WorkId!=f.DirectoryIdentity(work).Text || work!=intent.Work && intent.Snapshot=="")throw Bad();
                     using(var committed=Maybe(f,work+"/committed"))using(var cancelled=Maybe(f,work+"/cancelled")){
                         if(committed!=null && cancelled!=null)throw Bad();var marker=committed??cancelled;
-                        if(marker==null)result.Add(intent);else if(Encoding.ASCII.GetString(UpdateTicket.Read(marker,128))!=UpdateTrust.Hash(bytes)+"\n")throw Bad();
+                        if(marker==null){if(work!=intent.Work || result.Count>=64)throw Bad();result.Add(intent);}else if(Encoding.ASCII.GetString(UpdateTicket.Read(marker,128))!=UpdateTrust.Hash(bytes)+"\n")throw Bad();
                     }
                 }
             }return result;
@@ -351,28 +591,80 @@ namespace BetterAstralParty.Updating {
                 if(Slot(plugin)!=intent.Plugin || Slot(receipt)!=intent.OldReceipt || (plugin?.Hash()??"-")!=o.Plugin || (receipt?.Hash()??"-")!=o.Receipt)throw Bad();
                 if(receipt==null){if(plugin!=null || o.Plugin!="-" || o.Mode!="Fresh")throw Bad();}
                 else {
-                    if(plugin==null)throw Bad();var prior=InstallReceipt.Parse(UpdateTicket.Read(receipt,16384));
+                    var priorBytes=UpdateTicket.Read(receipt,16384);var prior=InstallReceipt.Parse(priorBytes);
+                    if(intent.Snapshot!="" && intent.PriorDescriptor!="") {
+                        var signed=VerifyUpdateProof(Convert.FromBase64String(intent.PriorDescriptor),Convert.FromBase64String(intent.PriorSignature));
+                        if(!MatchesInstalledProof(f,prior,signed))throw Bad("ReviewPriorProofMismatch");
+                        if(UpdateVersion.Parse(signed.Version).CompareTo(UpdateVersion.Parse(input.Update.Version))>0)throw new UpdateValidationException(UpdateFailure.NotNewer);
+                        var slots=ParseSnapshot(intent.Snapshot,f.RootIdentity.Text);
+                        if((plugin?.Hash()??"-")!=slots[UpdateTrust.PluginPath].Split('\t')[1] || receipt.Hash()!=slots[InstallReceipt.Path].Split('\t')[1])throw Bad("ReviewOriginalSnapshotMismatch");
+                        if(intent.Review!="")ValidateReview(f,input,intent.Review,prior,signed,intent.Snapshot);
+                        else foreach(var pair in slots)if(pair.Key!=InstallReceipt.Path && pair.Key!=UpdateTransaction.HighWaterPath && pair.Value!="-\t-" && pair.Value.Split('\t')[1]!=prior.Files[pair.Key])throw Bad("UnreviewedChangedOwnedFile");
+                        ValidateWholeChannel(prior.Channels,o.Root,UpdateVersion.Parse(signed.Version).Tag,signed.Protocol,signed.SettingsSchema,input.Update,UpdateTransaction.ReadHighWater(f));
+                    } else {
+                    if(plugin==null)throw Bad();
                     if(prior.Files[UpdateTrust.PluginPath]!=o.Plugin)throw Bad();
                     var metadata=InstalledPluginMetadata.Read(UpdateTicket.Read(plugin,UpdateTrust.MaxFileBytes));
                     if(UpdateVersion.Parse(metadata.Version).CompareTo(UpdateVersion.Parse(input.Update.Version))>0)throw Bad();
                     ValidateWholeChannel(prior.Channels,o.Root,metadata.Version,metadata.UpdateProtocol,metadata.SettingsSchema,input.Update,UpdateTransaction.ReadHighWater(f));
+                    if(intent.Snapshot!="") {
+                        if(o.Mode!="Current" || intent.Review!="" || intent.PriorDescriptor!="" || intent.PriorSignature!="")throw Bad("UnverifiedReviewIntent");
+                        var slots=ParseSnapshot(intent.Snapshot,f.RootIdentity.Text);
+                        if(plugin.Hash()!=slots[UpdateTrust.PluginPath].Split('\t')[1] || receipt.Hash()!=slots[InstallReceipt.Path].Split('\t')[1])throw Bad("ReviewOriginalSnapshotMismatch");
+                        foreach(var name in InstallReceipt.Owned)if(slots[name]!="-\t-" && slots[name].Split('\t')[1]!=prior.Files[name])throw Bad("UnreviewedChangedOwnedFile");
+                    }
+                    }
                 }
             }
-            if(o.Mode=="OriginalDev" && (o.Plugin!=OriginalDevPlugin || !o.Image.EndsWith("\t"+OriginalDevImage,StringComparison.Ordinal) || o.HelperReceipt!="-\t-" || o.Receipt=="-"))throw Bad();
             if(o.Mode=="Fresh" && (o.Image!="-\t-" || o.HelperReceipt!="-\t-"))throw Bad();
-            if(o.Mode=="SignedLegacy" && (o.Image=="-\t-" || o.HelperReceipt=="-\t-"))throw Bad();
+            if(o.Mode=="HelperUpgrade" && (o.Image=="-\t-" || o.HelperReceipt=="-\t-"))throw Bad();
             using(var water=Maybe(f,UpdateTransaction.HighWaterPath))if(Slot(water)!=o.Water)throw Bad();
         }
-        private static void Original(WindowsFileFence f,WholeIntent intent){
+        private static void Original(WindowsFileFence f,WholeIntent intent,bool restored=false){
             var o=Observation.Parse(intent.Observation);
             using(var image=Maybe(f,HelperDescriptor.Image))using(var helper=Maybe(f,HelperDelivery.Receipt))using(var receipt=Maybe(f,InstallReceipt.Path)){
                 if(Slot(image)!=o.Image || Slot(helper)!=o.HelperReceipt || (receipt?.Hash()??"-")!=o.Receipt)throw Bad();
                 if(receipt==null){foreach(var name in InstallReceipt.Owned)using(var file=Maybe(f,name))if(file!=null)throw Bad();}
-                else {var prior=InstallReceipt.Parse(UpdateTicket.Read(receipt,16384));foreach(var name in InstallReceipt.Owned)using(var file=Maybe(f,name))if(file==null ? name==UpdateTrust.PluginPath : file.Hash()!=prior.Files[name])throw Bad();}
+                else if(intent.Snapshot!="") {
+                    var slots=ParseSnapshot(intent.Snapshot,f.RootIdentity.Text);
+                    foreach(var pair in slots) {
+                        if(pair.Key==InstallReceipt.Path) {
+                            if(restored ? receipt.Hash()!=pair.Value.Split('\t')[1] : Slot(receipt)!=pair.Value)throw Bad("ReviewOriginObjectChanged");
+                            continue;
+                        }
+                        using(var file=Maybe(f,pair.Key)) {
+                            if(restored){if((file?.Hash()??"-")!=pair.Value.Split('\t')[1])throw Bad("ReviewOriginChanged");}
+                            else if(Slot(file)!=pair.Value)throw Bad("ReviewOriginObjectChanged");
+                        }
+                    }
+                } else {var prior=InstallReceipt.Parse(UpdateTicket.Read(receipt,16384));foreach(var name in InstallReceipt.Owned)using(var file=Maybe(f,name))if(file==null ? name==UpdateTrust.PluginPath : file.Hash()!=prior.Files[name])throw Bad();}
             }
         }
-        private static void RetireIntent(WindowsFileFence f,WholeIntent intent,bool committed){
+        private static void ArchiveIntent(WindowsFileFence f,WholeIntent intent,Action<string>? boundary=null) {
+            if(intent.Snapshot=="")return;
+            using(var target=f.OpenFile(intent.Work+"/target-receipt")) {
+                if(target.Hash()!=intent.Receipt)throw Bad("WholeProofReceiptMismatch");
+                using(var d=f.OpenFile(intent.Work+"/signed-update.descriptor"))using(var s=f.OpenFile(intent.Work+"/signed-update.signature")) {
+                    var proof=VerifyUpdateProof(UpdateTicket.Read(d,UpdateTrust.MaxDescriptorBytes),UpdateTicket.Read(s,1024));
+                    if(!MatchesInstalledProof(f,InstallReceipt.Parse(UpdateTicket.Read(target,16384)),proof))throw Bad("HistoricalOwnedProofMismatch");
+                }
+            }
+            boundary?.Invoke("before:whole-history-archive");
+            f.ArchiveDirectory(intent.Work,"bap-v3-wholehist-"+intent.Work.Substring("bap-v3-wholeintent-".Length),intent.WorkId);
+            boundary?.Invoke("after:whole-history-archive");
+        }
+        private static void ArchiveCompletedIntents(WindowsFileFence f,Action<string>? boundary=null) {
+            ScanIntents(f);
+            foreach(var directory in Directory.GetDirectories(f.Root,"bap-v3-wholeintent-*",SearchOption.TopDirectoryOnly)) {
+                var work=Path.GetFileName(directory);WholeIntent intent;bool terminal;
+                using(var plan=f.OpenFile(work+"/plan"))intent=WholeIntent.Parse(UpdateTicket.Read(plan,262144));
+                using(var committed=Maybe(f,work+"/committed"))using(var cancelled=Maybe(f,work+"/cancelled"))terminal=committed!=null || cancelled!=null;
+                if(terminal)ArchiveIntent(f,intent,boundary);
+            }
+        }
+        private static void RetireIntent(WindowsFileFence f,WholeIntent intent,bool committed,Action<string>? boundary=null){
             Write(f,intent.Work+(committed?"/committed":"/cancelled"),Ascii(UpdateTrust.Hash(Ascii(intent.Text()))+"\n"));
+            ArchiveIntent(f,intent,boundary);
         }
         private sealed class Maintenance : IDisposable {
             internal readonly WindowsFileFence Fence;private WindowsFileFence.FileLease? _lock;
@@ -398,23 +690,35 @@ namespace BetterAstralParty.Updating {
             if(approved.Receipt!=UpdateTrust.Hash(receiptBytes))throw Bad();
             var lease=new Maintenance(root);try{using(var input=new Inputs(root,package,version)){
                 var f=lease.Fence;MatchInputs(f,input,o);TargetReceipt(f,input,receiptBytes);
-                var actual=Observation.Parse(Observe(root,package,version));actual.Nonce=o.Nonce;if(actual.Text()!=o.Text())throw Bad();
+                var actual=Observation.Parse(Observe(root,package,version,approved.Review));actual.Nonce=o.Nonce;if(actual.Text()!=o.Text())throw Bad();
+                ArchiveCompletedIntents(f,boundary);
+                if(approved.Review!=null && CaptureSnapshot(f)!=approved.Snapshot)throw Bad("ReviewOriginObjectChanged");
                 WindowsProcessGuard.AssertNoRunning(new[]{f.Full("AstralParty_INT.exe"),f.Full("BetterAstralParty-Launcher.exe"),f.Full(HelperDescriptor.Image)});
-                if(o.Mode=="Current" || o.Mode=="Recovery")return lease;
+                if(o.Mode=="Recovery")return lease;
                 var durable=Observation.Parse(o.Text());durable.Nonce="00000000000000000000000000000000";
-                var intent=new WholeIntent {Root=o.Root,Work="bap-wholeintent-"+Guid.NewGuid().ToString("N"),Observation=durable.Text(),Receipt=approved.Receipt};
+                var intent=new WholeIntent {Root=o.Root,Work="bap-v3-wholeintent-"+Guid.NewGuid().ToString("N"),Observation=durable.Text(),Receipt=approved.Receipt};
                 intent.WorkId=f.CreatePrivateDirectory(intent.Work).Text;
                 using(var oldPlugin=Maybe(f,UpdateTrust.PluginPath))if(oldPlugin!=null)Write(f,intent.Work+"/old-plugin",UpdateTicket.Read(oldPlugin,UpdateTrust.MaxFileBytes));
                 using(var oldReceipt=Maybe(f,InstallReceipt.Path))if(oldReceipt!=null)Write(f,intent.Work+"/old-receipt",UpdateTicket.Read(oldReceipt,16384));
                 using(var oldPlugin=Maybe(f,intent.Work+"/old-plugin"))intent.Plugin=Slot(oldPlugin);
                 using(var oldReceipt=Maybe(f,intent.Work+"/old-receipt"))intent.OldReceipt=Slot(oldReceipt);
-                Write(f,intent.Work+"/target-receipt",receiptBytes);Write(f,intent.Work+"/plan",Ascii(intent.Text()));
+                if(intent.OldReceipt!="-\t-" && (o.Plugin=="-" || approved.Review!=null || o.Mode=="Current")) {
+                    intent.Snapshot=CaptureSnapshot(f);intent.Review=approved.Review??"";
+                    if(o.Plugin=="-" || approved.Review!=null)using(var receipt=f.OpenFile(intent.Work+"/old-receipt")) {
+                        PriorProofBytes(f,input,UpdateTicket.Read(receipt,16384),out var descriptor,out var signature);
+                        intent.PriorDescriptor=Convert.ToBase64String(descriptor);intent.PriorSignature=Convert.ToBase64String(signature);
+                    }
+                }
+                Write(f,intent.Work+"/target-receipt",receiptBytes);
+                Write(f,intent.Work+"/signed-update.descriptor",input.UpdateDescriptorBytes);
+                Write(f,intent.Work+"/signed-update.signature",input.UpdateSignatureBytes);
+                Write(f,intent.Work+"/plan",Ascii(intent.Text()));
                 CheckIntent(f,input,intent);Original(f,intent);boundary?.Invoke("whole-intent-durable");
             }return lease;}catch{lease.Dispose();throw;}
         }
         private static MigrationPlan CreateMigration(WindowsFileFence f,Inputs input,Observation o,string receiptHash,Action<string>? boundary){
             using(var oldImage=Maybe(f,HelperDescriptor.Image))using(var oldReceipt=Maybe(f,HelperDelivery.Receipt))if(Slot(oldImage)!=o.Image || Slot(oldReceipt)!=o.HelperReceipt)throw Bad();
-            var p=new MigrationPlan {Root=o.Root,Work="bap-helperbridge-"+Guid.NewGuid().ToString("N"),HelperWork="bap-helper-"+Guid.NewGuid().ToString("N"),Update=o.Update,Helper=o.Helper,Receipt=receiptHash,Water=o.Water,OldImage=o.Image,OldReceipt=o.HelperReceipt};
+            var p=new MigrationPlan {Root=o.Root,Work="bap-v3-helperbridge-"+Guid.NewGuid().ToString("N"),HelperWork="bap-v3-helper-"+Guid.NewGuid().ToString("N"),Update=o.Update,Helper=o.Helper,Receipt=receiptHash,Water=o.Water,OldImage=o.Image,OldReceipt=o.HelperReceipt};
             p.WorkId=f.CreatePrivateDirectory(p.Work).Text;p.HelperWorkId=f.CreatePrivateDirectory(p.HelperWork).Text;
             Write(f,p.HelperWork+"/descriptor",input.HelperDescriptorBytes);Write(f,p.HelperWork+"/signature",input.HelperSignature);Write(f,p.HelperWork+"/image",input.HelperBytes);
             using(var image=f.OpenFile(p.HelperWork+"/image"))p.NewImage=Slot(image);
@@ -427,37 +731,40 @@ namespace BetterAstralParty.Updating {
             var o=Observation.Parse(intent.Observation);if(p.Root!=o.Root || p.Update!=o.Update || p.Helper!=o.Helper || p.Receipt!=intent.Receipt || p.Water!=o.Water || p.OldImage!=o.Image || p.OldReceipt!=o.HelperReceipt)throw Bad();
         }
         private static bool CompletedIntent(WindowsFileFence f,Inputs input,WholeIntent intent,WindowsProcessGuard.LaunchLease processes){
-            foreach(var d in Directory.GetDirectories(f.Root,"bap-helperbridge-*",SearchOption.TopDirectoryOnly)){
+            foreach(var d in Directory.GetDirectories(f.Root,"bap-v3-helperbridge-*",SearchOption.TopDirectoryOnly)){
                 var work=Path.GetFileName(d);using(var marker=Maybe(f,work+"/committed"))if(marker!=null)using(var file=f.OpenFile(work+"/plan")){
                     var p=MigrationPlan.Parse(UpdateTicket.Read(file,4096));var o=Observation.Parse(intent.Observation);
                     if(p.Receipt!=intent.Receipt || p.Update!=o.Update || p.Helper!=o.Helper || p.OldImage!=o.Image || p.OldReceipt!=o.HelperReceipt)continue;
                     MatchIntentPlan(intent,p);CheckPlan(f,input,p);Target(f,input,p.Receipt,processes);
                     CheckItem(f,p,HelperDescriptor.Image,p.OldImage,p.NewImage,"image","old-image");CheckItem(f,p,HelperDelivery.Receipt,p.OldReceipt,p.NewReceipt,"receipt","old-receipt");
-                    if(HelperDelivery.Fingerprint(f,UpdateTrust.Production(),2)!=input.Helper.Sha256)throw Bad();return true;
+                    if(HelperDelivery.Fingerprint(f,UpdateTrust.Production(),3)!=input.Helper.Sha256)throw Bad();return true;
                 }
             }return false;
         }
         internal static void Recover(string root,string package,string version,Action<string>? boundary=null) {
             using(var input=new Inputs(root,package,version))using(var lease=new Maintenance(root)) {
-                var f=lease.Fence;var pending=Scan(f);OtherState(f,pending);var intents=ScanIntents(f);if(pending.Count>1 || intents.Count>1)throw Bad();
+                var f=lease.Fence;ArchiveCompletedIntents(f,boundary);var pending=Scan(f);OtherState(f,pending);var intents=ScanIntents(f);if(pending.Count>1 || intents.Count>1)throw Bad();
                 var intent=intents.Count==1?intents[0]:null;if(intent!=null)CheckIntent(f,input,intent);
                 if(pending.Count==0 && intent==null)return;
                 if(pending.Count==0 && intent!=null){
                     string receipt;using(var file=Maybe(f,InstallReceipt.Path))receipt=file?.Hash()??"-";
-                    if(receipt!=intent.Receipt){
-                        Original(f,intent);
+                    if(receipt!=intent.Receipt || !MatchesTarget(f,input,intent.Receipt)){
+                        Original(f,intent,true);
                         WindowsProcessGuard.AssertNoRunning(new[]{f.Full("AstralParty_INT.exe"),f.Full("BetterAstralParty-Launcher.exe"),f.Full(HelperDescriptor.Image)});
-                        RetireIntent(f,intent,false);boundary?.Invoke("whole-intent-restored");return;
+                        RetireIntent(f,intent,false,boundary);boundary?.Invoke("whole-intent-restored");return;
                     }
                 }
                 using(var processes=WindowsProcessGuard.Acquire(f,new[]{"AstralParty_INT.exe","BetterAstralParty-Launcher.exe"})) {
                     WindowsProcessGuard.AssertNoRunning(new[]{f.Full(HelperDescriptor.Image)});
                     if(pending.Count==1){if(intent!=null)MatchIntentPlan(intent,pending[0]);Finish(f,input,pending[0],boundary,processes);}
-                    else if(intent!=null && !CompletedIntent(f,input,intent,processes)){
+                    else if(intent!=null && Observation.Parse(intent.Observation).Mode=="Current") {
+                        Target(f,input,intent.Receipt,processes);
+                        if(HelperDelivery.Fingerprint(f,UpdateTrust.Production(),3)!=input.Helper.Sha256)throw Bad("ReviewHelperChanged");
+                    } else if(intent!=null && !CompletedIntent(f,input,intent,processes)){
                         Target(f,input,intent.Receipt,processes);var o=Observation.Parse(intent.Observation);
                         var plan=CreateMigration(f,input,o,intent.Receipt,boundary);Finish(f,input,plan,boundary,processes);
                     }
-                    if(intent!=null)RetireIntent(f,intent,true);
+                    if(intent!=null)RetireIntent(f,intent,true,boundary);
                 }
             }
         }
@@ -469,13 +776,19 @@ namespace BetterAstralParty.Updating {
                     WindowsProcessGuard.AssertNoRunning(new[]{f.Full(HelperDescriptor.Image)});
                     var intents=ScanIntents(f);if(intents.Count>1 || pending.Count>1)throw Bad();
                     if(o.Mode=="Current" || o.Mode=="Recovery"){
-                        if(pending.Count!=0 || intents.Count!=0 || HelperDelivery.Fingerprint(f,UpdateTrust.Production(),2)!=input.Helper.Sha256)throw Bad();return;
+                        if(pending.Count!=0 || intents.Count>1 || HelperDelivery.Fingerprint(f,UpdateTrust.Production(),3)!=input.Helper.Sha256)throw Bad();
+                        if(intents.Count==1) {
+                            var current=intents[0];CheckIntent(f,input,current);
+                            if(current.Snapshot=="" || current.Receipt!=receiptHash || Observation.Parse(current.Observation).Mode!="Current")throw Bad();
+                            RetireIntent(f,current,true,boundary);
+                        }
+                        return;
                     }
                     if(intents.Count!=1)throw Bad();var intent=intents[0];CheckIntent(f,input,intent);
                     var durable=Observation.Parse(o.Text());durable.Nonce="00000000000000000000000000000000";
                     if(intent.Observation!=durable.Text() || intent.Receipt!=receiptHash)throw Bad();
                     var plan=pending.Count==1?pending[0]:CreateMigration(f,input,o,receiptHash,boundary);
-                    MatchIntentPlan(intent,plan);Finish(f,input,plan,boundary,processes);RetireIntent(f,intent,true);
+                    MatchIntentPlan(intent,plan);Finish(f,input,plan,boundary,processes);RetireIntent(f,intent,true,boundary);
                 }
             }
         }

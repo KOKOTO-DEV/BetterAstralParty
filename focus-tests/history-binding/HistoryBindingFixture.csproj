@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems><UseAppHost>false</UseAppHost>
+    <StartupObject>HistoryBindingFixture</StartupObject><Nullable>enable</Nullable>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers><DefineConstants>$(DefineConstants);BAP_SAFETY_FIXTURE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="HistoryBindingFixture.cs" />
+    <Compile Include="../../updater/*.cs" Exclude="../../updater/UpdateHelperProgram.cs" />
+    <Compile Include="../../src/Observability/*.cs" />
+    <Compile Include="../../diagnostics/DiagnosticBundle.cs" />
+    <Compile Include="../../diagnostics/MinimalDiagnosticProjection.cs" />
+    <Compile Include="../../updater-safety-tests/CompatibilityFixtureData.cs" />
+  </ItemGroup>
+</Project>

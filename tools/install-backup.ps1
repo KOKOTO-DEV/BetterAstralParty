@@ -3,7 +3,7 @@ function Get-InstallJournalPath([string]$GameRoot) {
     $sha = [Security.Cryptography.SHA256]::Create()
     try { $key = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes([IO.Path]::GetFullPath($GameRoot).TrimEnd('\').ToLowerInvariant()))).Replace('-', '') }
     finally { $sha.Dispose() }
-    return Join-Path $env:LOCALAPPDATA "BetterAstralParty/Backups/$key/pending.json"
+    return Join-Path $env:LOCALAPPDATA "BetterAstralParty/Backups/v3/$key/pending.json"
 }
 
 function Assert-InstallTarget([string]$GameRoot, [string]$Target) {
@@ -68,6 +68,16 @@ function Test-InstallWritable($Targets) {
     }
 }
 
+function Get-InstallVolumeBudget([string]$GameRoot,[string]$BackupDirectory,[long]$InstallBytes,[long]$BackupBytes) {
+    $budget=@{}
+    foreach($item in @(@{Path=$GameRoot;Bytes=$InstallBytes},@{Path=$BackupDirectory;Bytes=$BackupBytes})) {
+        $volume=[IO.Path]::GetPathRoot([IO.Path]::GetFullPath($item.Path))
+        if(!$budget.ContainsKey($volume)){$budget[$volume]=[long]16MB}
+        $budget[$volume]+=[long]$item.Bytes
+    }
+    return $budget
+}
+
 function Start-InstallTransaction([string]$GameRoot, $Targets, [long]$InstallBytes) {
     $journal = Get-InstallJournalPath $GameRoot
     if (Test-Path -LiteralPath $journal) { throw "Unfinished installation needs recovery: $journal" }
@@ -77,10 +87,10 @@ function Start-InstallTransaction([string]$GameRoot, $Targets, [long]$InstallByt
     $backupDir = Join-Path (Split-Path -Parent $journal) ([guid]::NewGuid().ToString('N'))
     $backupBytes = [long]0
     foreach ($target in $targets) { if (Test-Path -LiteralPath $target) { $backupBytes += (Get-Item -LiteralPath $target).Length } }
-    # Include both copies on each volume: conservative when backup/game share a drive.
-    foreach ($path in @($GameRoot, $backupDir)) {
-        $drive = [IO.DriveInfo]::new([IO.Path]::GetPathRoot($path))
-        if ($drive.AvailableFreeSpace -lt ($InstallBytes + $backupBytes + 16MB)) { throw 'Not enough free space for installation and rollback backup.' }
+    $budget=Get-InstallVolumeBudget $GameRoot $backupDir $InstallBytes $backupBytes
+    foreach ($volume in $budget.Keys) {
+        $drive = [IO.DriveInfo]::new($volume)
+        if ($drive.AvailableFreeSpace -lt $budget[$volume]) { throw 'Not enough free space for installation and rollback backup.' }
     }
     $null = New-Item -ItemType Directory -Force -Path $backupDir
     $entries = @()
@@ -143,8 +153,10 @@ function Read-InstallRecoveryJournal([string]$GameRoot, [string[]]$AllowedTarget
         Assert-InstallTarget $journalRoot $entry.Backup
         if($entry.Existed){
             if($entry.Hash -isnot [string] -or $entry.Hash -cnotmatch '\A[A-F0-9]{64}\z' -or
-               !(Test-Path -LiteralPath $entry.Backup -PathType Leaf) -or
-               (Get-FileHash -LiteralPath $entry.Backup -Algorithm SHA256).Hash -cne $entry.Hash){throw 'Recovery backup missing or damaged.'}
+               !(Test-Path -LiteralPath $entry.Backup -PathType Leaf)){throw 'Recovery backup missing or damaged.'}
+            $backupStream=[IO.File]::OpenRead($entry.Backup)
+            try { if((Get-FileHash -InputStream $backupStream -Algorithm SHA256).Hash -cne $entry.Hash){throw 'Recovery backup missing or damaged.'} }
+            finally { $backupStream.Dispose() }
         } elseif($null -ne $entry.Hash -or (Test-Path -LiteralPath $entry.Backup)){throw 'Unexpected recovery backup retained.'}
         $index++
     }

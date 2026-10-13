@@ -53,7 +53,7 @@ function Get-BapRetainedHistoryEvidence($Bundle,$State,[string]$DescriptorHash) 
             $Pins[$Path]=$api.Hash.Invoke($file,@())
             return ,$bytes
         }
-        $water=$api.Open.Invoke($fence,[object[]]@('BetterAstralParty.update.version',$false,$false)); $leases.Add($water)
+        $water=$api.Open.Invoke($fence,[object[]]@('BetterAstralParty.update-v3.version',$false,$false)); $leases.Add($water)
         if ($api.Hash.Invoke($water,@()) -cne $State.WaterHash) { throw 'Retained update history changed.' }
         $waterIdentity=$api.RootText.GetValue($api.Identity.GetValue($water),$null)
         $selected=$null
@@ -65,10 +65,10 @@ function Get-BapRetainedHistoryEvidence($Bundle,$State,[string]$DescriptorHash) 
                 $entry[$name]=$field.GetValue($nativeEntry)
             }
             if ($entry.Pending -or !$entry.Committed -or $entry.Descriptor -cne $DescriptorHash) { continue }
-            if ($entry.Work -cnotmatch '\Abap-txn-[0-9a-f]{32}\z' -or $entry.Stage -cnotmatch '\Abap-stage-[0-9a-f]{32}\z') { throw 'Unsafe historical update proof path.' }
+            if ($entry.Work -cnotmatch '\Abap-v3-txn-[0-9a-f]{32}\z' -or $entry.Stage -cnotmatch '\Abap-v3-stage-[0-9a-f]{32}\z') { throw 'Unsafe historical update proof path.' }
             $pins=@{}; $plan=Read-HistoryProof ($entry.Work+'/plan') 16384 $pins
             $lines=[Text.Encoding]::ASCII.GetString($plan).Split([char]10)
-            $row=@($lines | Where-Object { $_.StartsWith("file=BetterAstralParty.update.version`t",[StringComparison]::Ordinal) })
+            $row=@($lines | Where-Object { $_.StartsWith("file=BetterAstralParty.update-v3.version`t",[StringComparison]::Ordinal) })
             if ($row.Count -ne 1) { throw 'Historical update must identify one retained history file.' }
             $slot=$row[0].Split([char]9)
             if ($slot.Count -ne 5) { throw 'Invalid historical update history slot.' }
@@ -112,13 +112,13 @@ function Assert-BapReinstallAbsent($Bundle) {
         Assert-InstallTarget $Bundle.GameRoot $path
         if (Test-Path -LiteralPath $path) { throw '모드 파일이 남아 있어 재설치 이력을 초기화하지 않습니다. / Reinstall generation requires complete mod removal.' }
     }
-    foreach ($relative in @('BetterAstralParty.reinstall.pending','BetterAstralParty.update.operation','BetterAstralParty.update.failed')) {
+    foreach ($relative in @('BetterAstralParty.reinstall-v3.pending','BetterAstralParty.update-v3.operation','BetterAstralParty.update-v3.failed')) {
         if (Test-Path -LiteralPath (Join-Path $Bundle.GameRoot $relative)) { throw '미완료 작업 기록을 보존하고 중단합니다. / Pending operation retained; recovery review required.' }
     }
 }
 
 function Get-BapCleanReinstallPlan($Bundle) {
-    $pending=Join-Path $Bundle.GameRoot 'BetterAstralParty.reinstall.pending'
+    $pending=Join-Path $Bundle.GameRoot 'BetterAstralParty.reinstall-v3.pending'
     Assert-InstallTarget $Bundle.GameRoot $pending
     if (Test-Path -LiteralPath $pending) { throw '미완료 재설치 기록을 보존하고 중단합니다. / Pending reinstall retained; recovery review required.' }
     $state=Assert-BapInstallRoot $Bundle
@@ -128,7 +128,6 @@ function Get-BapCleanReinstallPlan($Bundle) {
     Assert-BapHelperBootstrap $Bundle
     $backupRoot=Split-Path -Parent (Get-InstallJournalPath $Bundle.GameRoot)
     $directories=@(Get-ChildItem -LiteralPath $backupRoot -Directory -Force)
-    if ($directories.Count -gt 512) { throw 'Too many recovery backups; manual review required.' }
     $completed=@(foreach ($dir in $directories) {
         if ($dir.Name -cmatch '\A[0-9a-f]{32}\z') {
             $path=Join-Path $dir.FullName 'completed.json'
@@ -147,7 +146,7 @@ function Get-BapCleanReinstallPlan($Bundle) {
     $rows=@{}; $pins=@{$completed.FullName=$proof.JournalSha256}
     foreach ($entry in $proof.State.Entries) {
         $name=$entry.Target.Substring($Bundle.GameRoot.Length+1).Replace('\','/')
-        if (!$entry.Existed -and (!($Bundle.Expected.Keys -ccontains $name) -or $name -ceq 'BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll')) { throw 'Removal backup must contain the former core files.' }
+        if (!$entry.Existed -and !($Bundle.Expected.Keys -ccontains $name)) { throw 'Removal backup must contain the former core files.' }
         $rows[$name]=$entry
         if ($entry.Existed) { $pins[$entry.Backup]=$entry.Hash }
     }
@@ -160,12 +159,30 @@ function Get-BapCleanReinstallPlan($Bundle) {
     $arguments=[object[]]::new(1); $arguments[0]=[byte[]]$receiptBytes; $null=$validator.Invoke($null,$arguments)
     $receipt=Read-BapInstallJson $receiptBytes
     foreach ($file in $receipt.files) { if ($rows[$file.path].Existed -and $rows[$file.path].Hash -cne $file.sha256) { throw 'Removal backup differs from the former receipt.' } }
-    $pluginBytes=Read-BapInstallFile $rows['BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll'].Backup
-    if ((Get-BapInstallHash $pluginBytes) -cne $rows['BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll'].Hash) { throw 'Removal plugin changed during validation.' }
-    $plugin=Read-BapInstallMetadata $pluginBytes
+    $coreProof='';$corePins=@{}
+    if($rows['BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll'].Existed) {
+        $pluginBytes=Read-BapInstallFile $rows['BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll'].Backup
+        if ((Get-BapInstallHash $pluginBytes) -cne $rows['BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll'].Hash) { throw 'Removal plugin changed during validation.' }
+        $plugin=Read-BapInstallMetadata $pluginBytes
+    } else {
+        $core=(Get-BapInstallVerifier $Bundle).GetType('SteamLauncher').GetMethod('ValidateRemovedInstallEvidence',[Reflection.BindingFlags]'Public,Static')
+        if(!$core -or $core.ReturnType -ne [string]){throw 'Missing former plugin requires signed installed-proof support; use a current complete package.'}
+        $coreArguments=[object[]]::new(4);$coreArguments[0]=[string]$Bundle.GameRoot;$coreArguments[1]=[string]$Bundle.PackageRoot
+        $coreArguments[2]=[string]$Bundle.Version.Text;$coreArguments[3]=[byte[]]$receiptBytes
+        $coreProof=$core.Invoke($null,$coreArguments);$coreLines=$coreProof.Split([char]10)
+        if($coreLines.Count -lt 7 -or $coreLines[0] -cne 'BetterAstralParty.RemovedInstallEvidence/v1' -or $coreLines[1] -cne ('root='+$state.RootIdentity) -or
+            !$coreLines[2].StartsWith('version=',[StringComparison]::Ordinal) -or $coreLines[3] -cnotmatch '\Adescriptor=[A-F0-9]{64}\z' -or
+            $coreLines[4] -cne 'update-protocol=3' -or $coreLines[5] -cne 'settings-schema=1' -or $coreLines[-1] -cne '') {throw 'Invalid removed installed-proof response.'}
+        $former=Get-BapInstallVersion $coreLines[2].Substring(8)
+        foreach($line in @($coreLines|Select-Object -Skip 6|Select-Object -SkipLast 1)) {
+            if($line -cnotmatch '\Aproof=((?:bap-v3-txn-[0-9a-f]{32}/(?:plan|committed|commit-intent)|bap-v3-stage-[0-9a-f]{32}/(?:descriptor\.bin|signature\.bin|key-id\.bin)|bap-v3-(?:wholeintent|wholehist)-[0-9a-f]{32}/(?:plan|committed|target-receipt|signed-update\.descriptor|signed-update\.signature)))=([A-F0-9]{64})\z' -or $corePins.ContainsKey($Matches[1])){throw 'Unsafe removed installed-proof pin.'}
+            $corePins[$Matches[1]]=$Matches[2]
+        }
+        $plugin=@{Version=$former.Text;UpdateProtocol='3';SettingsSchema='1'}
+    }
     if ($receipt.channelState -isnot [string]) { throw 'Removal backup does not identify the installation generation.' }
     $channel=[Text.Encoding]::ASCII.GetString([Convert]::FromBase64String($receipt.channelState)).Split([char]10)
-    $waterBytes=Read-BapInstallFile (Join-Path $Bundle.GameRoot 'BetterAstralParty.update.version')
+    $waterBytes=Read-BapInstallFile (Join-Path $Bundle.GameRoot 'BetterAstralParty.update-v3.version')
     if ((Get-BapInstallHash $waterBytes) -cne $state.WaterHash) { throw 'Update history changed during validation.' }
     $water=[Text.Encoding]::ASCII.GetString($waterBytes).Split([char]10)
     $feed=(Get-BapInstallVerifier $Bundle).GetType('BetterAstralParty.Updating.ReleaseFeedPolicy',$true)
@@ -175,11 +192,11 @@ function Get-BapCleanReinstallPlan($Bundle) {
         if (!$repository) { throw 'Removal channel repository identity API missing.' }
         $repositories[$name]=[long]$repository.GetRawConstantValue()
     }
-    $gamePins=@{}; $waterIdentity=$null
+    $gamePins=@{};foreach($name in $corePins.Keys){$gamePins[$name]=$corePins[$name]}; $waterIdentity=$null
     if (!(Test-BapRemovedHistory $channel $water $state $plugin.Version $repositories $null)) {
         $historical=Get-BapRetainedHistoryEvidence $Bundle $state $water[3].Substring(11)
         if (!(Test-BapRemovedHistory $channel $water $state $plugin.Version $repositories $historical.Descriptor)) { throw 'Removal backup does not match the retained update history.' }
-        $gamePins=$historical.Pins
+        foreach($name in $historical.Pins.Keys){if($gamePins.ContainsKey($name) -and $gamePins[$name] -cne $historical.Pins[$name]){throw 'Conflicting retained evidence pin.'};$gamePins[$name]=$historical.Pins[$name]}
         $waterIdentity=$historical.WaterIdentity
     }
     $helperReceiptBytes=Read-BapInstallFile $rows['BetterAstralParty.helper.receipt'].Backup
@@ -199,24 +216,12 @@ function Get-BapCleanReinstallPlan($Bundle) {
         if ($evidence.Count -ne 6 -or $evidence[0] -cne 'BetterAstralParty.RemovedHelperEvidence/v1' -or $evidence[5] -cne '') { throw 'Invalid removed helper evidence response.' }
         $work=$null;$suffixes=@{}
         foreach ($line in $evidence[1..4]) {
-            if ($line -cnotmatch '\A(bap-helper-[0-9a-f]{32})/(plan|descriptor|signature|committed)=([A-F0-9]{64})\z') { throw 'Unsafe removed helper evidence path.' }
+            if ($line -cnotmatch '\A(bap-v3-helper-[0-9a-f]{32})/(plan|descriptor|signature|committed)=([A-F0-9]{64})\z') { throw 'Unsafe removed helper evidence path.' }
             if (($work -and $work -cne $Matches[1]) -or $suffixes.ContainsKey($Matches[2])) { throw 'Ambiguous removed helper evidence.' }
             $work=$Matches[1];$suffixes[$Matches[2]]=$true;$gamePins[$work+'/'+$Matches[2]]=$Matches[3]
         }
-    } else {
-    # Compatibility only for the deliberately pinned development rc.3 dispatcher.
-    if ($Bundle.Version.Text -cne '1.0.0-rc.3' -or $Bundle.ManifestSha256 -cne '80C0CE4BDF0A2C0F3A323B8394DCCD1DD93ECD66B18AEFE2EFD32C929FEFB684') { throw 'Version-neutral reinstall validation API required; use a current complete package.' }
-    $helperHash=$Bundle.SourceHashes['helper-bootstrap/BetterAstralParty-UpdateHelper.exe']
-    $helperDescriptor=$Bundle.SourceHashes['helper-bootstrap/helper.descriptor']
-    $signatureBytes=Read-BapInstallFile (Join-Path $Bundle.PackageRoot 'helper-bootstrap/helper.signature')
-    if ((Get-BapInstallHash $signatureBytes) -cne $Bundle.SourceHashes['helper-bootstrap/helper.signature']) { throw 'Pinned helper signature changed.' }
-    $keys=[regex]::Matches([Text.Encoding]::ASCII.GetString($signatureBytes),'(?m)^key-id=([A-Za-z0-9._-]{1,128})\r?$')
-    if ($keys.Count -ne 1) { throw 'Pinned helper signing identity missing.' }
-    $helperReceipt=[Text.Encoding]::ASCII.GetString($helperReceiptBytes)
-    $pattern='\ABetterAstralParty.HelperReceipt/v1\nroot='+[regex]::Escape($state.RootIdentity)+'\nimage-id=[A-F0-9]{8}:[A-F0-9]{16}\nversion='+[regex]::Escape($Bundle.Version.Text)+'\nsha256='+$helperHash+'\ndescriptor='+$helperDescriptor+'\nkey-id='+[regex]::Escape($keys[0].Groups[1].Value)+'\n\z'
-    if ($rows['BetterAstralParty-UpdateHelper.exe'].Hash -cne $helperHash -or $helperReceipt -cnotmatch $pattern) { throw 'Removed helper does not match the approved signed bootstrap.' }
-    }
-    return @{RootIdentity=$state.RootIdentity;WaterHash=$state.WaterHash;WaterIdentity=$waterIdentity;Version=$state.HighestVersion;ProofHash=$proof.JournalSha256;Pins=$pins;GamePins=$gamePins;HelperProof=$helperProof;BackupRoot=$backupRoot;BackupId=$id}
+    } else { throw 'Current removed-helper evidence API required.' }
+    return @{RootIdentity=$state.RootIdentity;WaterHash=$state.WaterHash;WaterIdentity=$waterIdentity;Version=$state.HighestVersion;ProofHash=$proof.JournalSha256;Pins=$pins;GamePins=$gamePins;HelperProof=$helperProof;CoreProof=$coreProof;BackupRoot=$backupRoot;BackupId=$id}
 }
 
 function Get-BapReinstallFenceApi($Bundle) {
@@ -267,7 +272,7 @@ function Move-BapReinstallHistory($Bundle,$Plan,[IO.FileStream]$HeldBackupLock) 
             $null=$api.Directory.Invoke($gameFence,[object[]]@($relative.Split([char]'/')[0]))
         }
         $current=Get-BapCleanReinstallPlan $Bundle
-        if (!$current -or $current.RootIdentity -cne $Plan.RootIdentity -or $current.WaterHash -cne $Plan.WaterHash -or $current.WaterIdentity -cne $Plan.WaterIdentity -or $current.ProofHash -cne $Plan.ProofHash -or $current.HelperProof -cne $Plan.HelperProof) { throw 'Reinstall plan changed; nothing retired.' }
+        if (!$current -or $current.RootIdentity -cne $Plan.RootIdentity -or $current.WaterHash -cne $Plan.WaterHash -or $current.WaterIdentity -cne $Plan.WaterIdentity -or $current.ProofHash -cne $Plan.ProofHash -or $current.HelperProof -cne $Plan.HelperProof -or $current.CoreProof -cne $Plan.CoreProof) { throw 'Reinstall plan changed; nothing retired.' }
         foreach ($path in $Plan.Pins.Keys) {
             $relative=$path.Substring($Plan.BackupRoot.Length+1).Replace('\','/')
             $file=$api.Open.Invoke($backupFence,[object[]]@($relative,$false,$false)); $leases.Add($file)
@@ -277,20 +282,20 @@ function Move-BapReinstallHistory($Bundle,$Plan,[IO.FileStream]$HeldBackupLock) 
             $file=$api.Open.Invoke($gameFence,[object[]]@($relative,$false,$false));$leases.Add($file)
             if ($api.Hash.Invoke($file,@()) -cne $Plan.GamePins[$relative]) { throw 'Signed helper evidence changed; history retained.' }
         }
-        $water=$api.Open.Invoke($gameFence,[object[]]@('BetterAstralParty.update.version',$true,$false)); $leases.Add($water)
+        $water=$api.Open.Invoke($gameFence,[object[]]@('BetterAstralParty.update-v3.version',$true,$false)); $leases.Add($water)
         if ($Plan.WaterIdentity -and $api.RootText.GetValue($api.Identity.GetValue($water),$null) -cne $Plan.WaterIdentity) { throw 'Retained update history file identity changed; nothing retired.' }
         if ($api.Hash.Invoke($water,@()) -cne $Plan.WaterHash) { throw 'Update history changed; nothing retired.' }
         Assert-BapReinstallAbsent $Bundle
         $nonce=[guid]::NewGuid().ToString('N')
-        $archive='BetterAstralParty.update.version.uninstalled-'+$nonce
+        $archive='BetterAstralParty.update-v3.version.uninstalled-'+$nonce
         $record=@{schema=1;purpose='clean-reinstall-generation';root=$Plan.RootIdentity;fromVersion=$Plan.Version;toVersion=$Bundle.Version.Text;packageManifestSha256=$Bundle.ManifestSha256;backupId=$Plan.BackupId;proofSha256=$Plan.ProofHash;waterSha256=$Plan.WaterHash;archive=$archive}
         $bytes=[Text.UTF8Encoding]::new($false).GetBytes(($record | ConvertTo-Json -Compress))
-        $intent=$api.Open.Invoke($gameFence,[object[]]@('BetterAstralParty.reinstall.pending',$true,$true)); $leases.Add($intent)
+        $intent=$api.Open.Invoke($gameFence,[object[]]@('BetterAstralParty.reinstall-v3.pending',$true,$true)); $leases.Add($intent)
         $stream=$api.Stream.GetValue($intent,$null); $stream.Write($bytes,0,$bytes.Length); $null=$api.Flush.Invoke($intent,@())
         # Failure/interruption leaves the intent and all original evidence; never auto-clean or retry.
         $null=$api.Rename.Invoke($water,[object[]]@($gameFence,$archive)); $null=$api.Flush.Invoke($water,@())
         if ($api.Hash.Invoke($water,@()) -cne $Plan.WaterHash) { throw 'Archived history verification failed; retain reinstall intent.' }
-        $null=$api.Rename.Invoke($intent,[object[]]@($gameFence,('BetterAstralParty.reinstall.completed-'+$nonce))); $null=$api.Flush.Invoke($intent,@())
+        $null=$api.Rename.Invoke($intent,[object[]]@($gameFence,('BetterAstralParty.reinstall-v3.completed-'+$nonce))); $null=$api.Flush.Invoke($intent,@())
         Write-Host "이전 업데이트 이력을 보존하고 새 설치를 준비했습니다. / Previous history archived; new installation generation ready: $archive"
     } finally {
         for ($i=$leases.Count-1;$i -ge 0;$i--) { $leases[$i].Dispose() }

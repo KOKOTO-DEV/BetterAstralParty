@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><LangVersion>latest</LangVersion><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup>
+ <PropertyGroup><BepInExRoot Condition="'$(BepInExRoot)' == ''">$(MSBuildThisFileDirectory)..\..\.deps\bepinex</BepInExRoot></PropertyGroup>
+ <ItemGroup>
+  <Compile Include="../../src/UpdateNotificationState.cs" />
+  <Compile Include="../../src/UpdateNotificationUi.cs" />
+  <Compile Include="../../src/ModText.cs" />
+  <Compile Include="../../src/ReleaseUpdates.cs" />
+  <Compile Include="../../src/Observability/*.cs" />
+  <Compile Include="../../diagnostics/DiagnosticBundle.cs" />
+  <Compile Include="../../diagnostics/MinimalDiagnosticProjection.cs" />
+  <Compile Include="../../src/ReleaseHttpClient.cs" />
+  <Compile Include="../../src/AutomaticUpdateSnapshot.cs" />
+  <Compile Include="../../src/ReleaseFeedTransport.cs" />
+  <Compile Include="../../updater/ReleaseFeedPolicy.cs" />
+  <Reference Include="SemanticVersioning"><HintPath>$(BepInExRoot)/BepInEx/core/SemanticVersioning.dll</HintPath></Reference>
+ </ItemGroup>
+</Project>

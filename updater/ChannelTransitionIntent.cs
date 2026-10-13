@@ -16,8 +16,8 @@ namespace BetterAstralParty.Updating
             SourceChannel = source.ActiveChannel; SourceRepository = source.ActiveRepository; SourceRepositoryId = source.ActiveRepositoryId; Target = target; }
     }
     // An exact reviewed target and original root/receipt/configuration are retained in the
-    // ticket. Only Beta -> Stable may lower the current version; a return to Beta
-    // must be higher than the installed Stable version and retain its prior floor.
+    // ticket. Either explicit cross-channel direction may lower the installed
+    // version; the destination's retained floor and exact replay identity remain.
     internal sealed class ChannelTransitionIntent
     {
         internal const string SettingsPath = "BepInEx/config/kr.betterastralparty.mod.cfg";
@@ -31,7 +31,7 @@ namespace BetterAstralParty.Updating
         internal string Identity { get { return UpdateTrust.Hash(Bytes()); } }
         internal static ChannelTransitionReview Review(WindowsFileFence fence, VerifiedUpdateDescriptor target)
         {
-            if (target.Protocol != 2 || target.Channel != "Stable" && target.Channel != "Beta" || target.Repository != ReleaseFeedPolicy.For(target.Channel).Repository || target.SettingsSchema != 1) throw Prerequisite();
+            if (target.Protocol != 3 || target.Channel != "Stable" && target.Channel != "Beta" || target.Repository != ReleaseFeedPolicy.For(target.Channel).Repository || target.SettingsSchema != 1) throw Prerequisite();
             using (var file = fence.OpenFile(InstallReceipt.Path)) using (var plugin = fence.OpenFile(UpdateTrust.PluginPath)) {
                 var receipt = InstallReceipt.Parse(UpdateTicket.Read(file, 16384)); var state = receipt.Channels;
                 if (state == null || state.Root != fence.RootIdentity.Text || state.ActiveChannel == target.Channel || state.ActiveRepositoryId <= 0
@@ -39,8 +39,8 @@ namespace BetterAstralParty.Updating
                 var sourceFeed = ReleaseFeedPolicy.For(state.ActiveChannel);
                 if (!sourceFeed.Configured || sourceFeed.RepositoryId != state.ActiveRepositoryId) throw Prerequisite();
                 var metadata = InstalledPluginMetadata.Read(UpdateTicket.Read(plugin, UpdateTrust.MaxFileBytes));
-                if (metadata.UpdateProtocol != 2 || metadata.SettingsSchema != 1 || metadata.Version != state.ActiveVersion || plugin.Hash() != receipt.Files[UpdateTrust.PluginPath]) throw Prerequisite();
-                if (target.Channel == "Beta" && UpdateVersion.Parse(target.Version).CompareTo(UpdateVersion.Parse(metadata.Version)) <= 0) throw Prerequisite();
+                if (metadata.UpdateProtocol != 3 || metadata.SettingsSchema != 1 || metadata.Version != state.ActiveVersion || plugin.Hash() != receipt.Files[UpdateTrust.PluginPath]) throw Prerequisite();
+                using var history=UpdateTransaction.ValidateHistory(fence,receipt);
                 var floor = state.Floor(new UpdateContext(target.Repository, target.Channel, metadata.Version, target.Version, target.ReleaseId, target.AssetId, target.Platform, repositoryId: target.RepositoryId));
                 if (floor != null) { var comparison = UpdateVersion.Parse(target.Version).CompareTo(UpdateVersion.Parse(floor));
                     if (comparison < 0 || comparison == 0 && (target.Channel == "Stable" ? state.StableDescriptor : state.BetaDescriptor) != target.DescriptorSha256) throw new UpdateValidationException(UpdateFailure.NotNewer); }
@@ -52,8 +52,7 @@ namespace BetterAstralParty.Updating
         // presenting both versions, feeds and hashes. Popup close/settings is not approval.
         internal static ChannelTransitionIntent Approve(ChannelTransitionReview review)
         {
-            if (review.SourceChannel == review.Target.Channel || review.SourceRepository != ReleaseFeedPolicy.For(review.SourceChannel).Repository
-                || review.Target.Channel == "Beta" && UpdateVersion.Parse(review.Target.Version).CompareTo(UpdateVersion.Parse(review.CurrentVersion)) <= 0) throw Prerequisite();
+            if (review.SourceChannel == review.Target.Channel || review.SourceRepository != ReleaseFeedPolicy.For(review.SourceChannel).Repository) throw Prerequisite();
             return new ChannelTransitionIntent(review.Root, Guid.NewGuid().ToString("N"), review.ReceiptHash, review.SettingsHash, review.HighWaterHash, review.CurrentVersion,
                 review.SourceRepositoryId, review.Target.RepositoryId, review.Target.Version, review.Target.ReleaseId, review.Target.AssetId, review.Target.DescriptorSha256, review.Target.ZipSha256, review.SourceChannel, review.Target.Channel);
         }
@@ -61,8 +60,7 @@ namespace BetterAstralParty.Updating
         { return SourceChannel != TargetChannel && SourceRepositoryId > 0 && (SourceChannel != "Beta" || SourceRepositoryId == ReleaseFeedPolicy.BetaRepositoryId)
             && context.Repository == ReleaseFeedPolicy.For(TargetChannel).Repository && context.Channel == TargetChannel
             && context.RepositoryId > 0 && context.RepositoryId == TargetRepositoryId && context.CurrentVersion == CurrentVersion
-            && context.ReleaseTag == TargetVersion && context.ReleaseId == ReleaseId && context.AssetId == AssetId
-            && (TargetChannel != "Beta" || UpdateVersion.Parse(TargetVersion).CompareTo(UpdateVersion.Parse(CurrentVersion)) > 0); }
+            && context.ReleaseTag == TargetVersion && context.ReleaseId == ReleaseId && context.AssetId == AssetId; }
         internal void Require(WindowsFileFence fence, InstallReceipt receipt, string receiptHash, string? waterHash, string current, VerifiedUpdateDescriptor descriptor)
         { RequireEvidence(fence, receipt, receiptHash, waterHash, current, descriptor, SettingsHashAt(fence)); }
         // Recovery never writes configuration. The authenticated journal's original
@@ -74,7 +72,7 @@ namespace BetterAstralParty.Updating
             var state = receipt.Channels;
             if (fence.RootIdentity.Text != Root || state == null || state.Root != Root || state.ActiveChannel != SourceChannel || state.ActiveRepositoryId != SourceRepositoryId
                 || state.ActiveVersion != CurrentVersion || current != CurrentVersion || receiptHash != ReceiptHash || (waterHash ?? "-") != HighWaterHash
-                || settingsEvidence != SettingsHash || descriptor.Protocol != 2 || descriptor.RepositoryId != TargetRepositoryId || descriptor.Channel != TargetChannel
+                || settingsEvidence != SettingsHash || descriptor.Protocol != 3 || descriptor.RepositoryId != TargetRepositoryId || descriptor.Channel != TargetChannel
                 || descriptor.Version != TargetVersion || descriptor.ReleaseId != ReleaseId || descriptor.AssetId != AssetId || descriptor.DescriptorSha256 != DescriptorHash || descriptor.ZipSha256 != ZipHash)
                 throw Prerequisite();
             var sourceFeed = ReleaseFeedPolicy.For(SourceChannel);
@@ -96,7 +94,7 @@ namespace BetterAstralParty.Updating
         }
         internal void RequireStage(WindowsFileFence fence, UpdateTicket ticket)
         {
-            using (var file = fence.OpenFile("bap-transition-" + Operation))
+            using (var file = fence.OpenFile("bap-v3-transition-" + Operation))
                 if (Encoding.ASCII.GetString(UpdateTicket.Read(file, 256)) != Identity + "\nstage=" + ticket.Stage + "\n" || ticket.RootId != Root)
                     throw new ApplySafetyException(ApplyFailure.RecoveryRequired);
         }
@@ -113,9 +111,9 @@ namespace BetterAstralParty.Updating
             var v = new string[15]; for (var i = 0; i < v.Length; i++) { if (!f[i+1].StartsWith(names[i] + "=", StringComparison.Ordinal)) throw Prerequisite(); v[i] = f[i+1].Substring(names[i].Length + 1); }
             if (!Regex.IsMatch(v[0], @"\A[0-9A-F]{8}:[0-9A-F]{16}\z") || !Regex.IsMatch(v[1], @"\A[0-9a-f]{32}\z")
                 || !Digest(v[2]) || v[3] != "-" && !Digest(v[3]) || v[4] != "-" && !Digest(v[4]) || !Digest(v[11]) || !Digest(v[12])) throw Prerequisite();
-            var current = UpdateVersion.Parse(v[5]); var target = UpdateVersion.Parse(v[8]);
+            _ = UpdateVersion.Parse(v[5]); var target = UpdateVersion.Parse(v[8]);
             if (v[13] != "Stable" && v[13] != "Beta" || v[14] != "Stable" && v[14] != "Beta" || v[13] == v[14]
-                || v[14] == "Stable" && (target.Major == 0 || target.IsPrerelease) || v[14] == "Beta" && target.CompareTo(current) <= 0) throw Prerequisite();
+                || v[14] == "Stable" && (target.Major == 0 || target.IsPrerelease)) throw Prerequisite();
             var result = new ChannelTransitionIntent(v[0], v[1], v[2], v[3], v[4], v[5], Number(v[6]), Number(v[7]), v[8], Number(v[9]), Number(v[10]), v[11], v[12], v[13], v[14]);
             if (result.SourceChannel == "Beta" && result.SourceRepositoryId != ReleaseFeedPolicy.BetaRepositoryId || result.TargetChannel == "Beta" && result.TargetRepositoryId != ReleaseFeedPolicy.BetaRepositoryId
                 || Encoding.ASCII.GetString(result.Bytes()) != Encoding.ASCII.GetString(bytes)) throw Prerequisite(); return result;

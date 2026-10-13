@@ -30,9 +30,9 @@ namespace BetterAstralParty.Updating
         internal const string BetaRepository = "TSM701/BetterAstralPartyBeta";
         internal const long BetaRepositoryId = 1401226962;
         internal const long StableRepositoryId = 1410226758;
-        // Older clients must manually install 1.1.3 before using this asset generation.
-        internal const string UpdateManifestAsset = "BetterAstralParty.update-v2.manifest";
-        internal const string UpdateSignatureAsset = "BetterAstralParty.update-v2.signature";
+        // The new installation generation is never discovered by earlier clients.
+        internal const string UpdateManifestAsset = "BetterAstralParty.update-v3.manifest";
+        internal const string UpdateSignatureAsset = "BetterAstralParty.update-v3.signature";
         internal static ReleaseFeed Stable { get { return new ReleaseFeed(StableRepository, StableRepositoryId, "Stable"); } }
         internal static ReleaseFeed Beta { get { return new ReleaseFeed(BetaRepository, BetaRepositoryId, "Beta"); } }
         internal static ReleaseFeed For(string channel) { return channel == "Stable" ? Stable : channel == "Beta" ? Beta : throw new ArgumentException("Invalid channel"); }

@@ -122,9 +122,8 @@ namespace BetterAstralParty.Updating
                 values.Add(field.Value, new UnicodeEncoding(false, false, true).GetString(blob));
             }
             if (!values.ContainsKey("Guid") || !values.ContainsKey("Version") || values["Guid"] != Owner) throw Bad(); UpdateVersion.Parse(values["Version"]);
-            var extended = values.ContainsKey("UpdateProtocol") || values.ContainsKey("SettingsSchema");
-            if (extended && (values.Count != 4 || values["UpdateProtocol"] != "2" || values["SettingsSchema"] != "1")) throw Bad();
-            return new InstalledPluginMetadata(values["Version"], extended ? 2 : 0, extended ? 1 : 0);
+            if (values.Count != 4 || !values.TryGetValue("UpdateProtocol", out var protocol) || protocol != "3" || !values.TryGetValue("SettingsSchema", out var schema) || schema != "1") throw Bad();
+            return new InstalledPluginMetadata(values["Version"], 3, 1);
         }
     }
 }
