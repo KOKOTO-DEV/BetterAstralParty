@@ -1,6 +1,7 @@
 # BetterAstralParty
 
 https://github.com/TSM701/BetterAstralParty의 포크버전 입니다.
+
 이 포크는 원본에서 있던 불편한점을 개선하는데 목적을 둡니다.
 
 
