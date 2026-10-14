@@ -1,78 +1,20 @@
-# BetterAstralParty 1.2.1 R6.5 — desktop shortcut on install
-
-**Added:** `Install.cmd` now attempts to create a real **BetterAstralParty_1.2.1.lnk** on the current Windows desktop (including the Windows-configured OneDrive desktop) that targets the installed `8vJXnINT\Launch-BAP.cmd`. It uses Windows Shell Link COM directly through the existing `BetterAstralParty.Setup.exe`: no PowerShell, WScript, added binaries, administrator elevation, or additional launcher.
-
-- An existing same-named shortcut is **never overwritten**.
-- Failure to create the optional desktop shortcut prints a warning, but does not invalidate a verified game installation.
-- The setup receipt records the created shortcut's SHA-256. Ordinary `Uninstall.cmd` deletes it **only if unchanged and still pointing to this game's launch CMD**; modified/foreign shortcuts are kept.
-- `Force-Uninstall.cmd` detects the shortcut's actual target before offering to remove it, including when the receipt is missing. Shared BepInEx files and other desktop links remain untouched.
-- The installer can be packaged from the already-built DLL using `OneClick-Package.cmd`; recompiling the plugin is not required. The setup EXE must be recompiled via the packaging step.
-
-Actual Windows shortcut creation and game launches have **not** been verified in this Linux workspace. Source/ZIP and simulated packaging tests are not substitutes for an actual Windows installation test.
-
----
-
-# BetterAstralParty 1.2.1 R6.4 — streamlined one-click offline installer
-
-**Build:** `Build-And-Package.cmd` compiles the plugin and creates the installer ZIP.
-**Install ZIP:** contains `Install.cmd`, `Uninstall.cmd`, `Force-Uninstall.cmd`,
-`BetterAstralParty.Setup.exe`, the SHA-256 payload manifest and verified files.
-**Install:** run `Install.cmd`; Steam INT game auto-detected, no `INSTALL` typing.
-**Normal uninstall:** `Uninstall.cmd`, confirm `Y`.
-**Force uninstall:** `Force-Uninstall.cmd`, confirm `Y` after deletion preview;
-removes BAP-specific game files and local user-data/recovery backups, but
-retains shared BepInEx/doorstop loader, other plugins, Steam and game content.
-**Developer-only:** `OneClick-Package.cmd` optionally packages a previous
-compiled export. Historical `Build-Local.cmd` and `Fix-Installer.cmd` are not
-needed for the one-click workflow and have been removed from this source ZIP.
-
-The Setup EXE is the offline file installer invoked by the CMD scripts, not
-an extra download or background service. The output is an unsigned *local*
-build unless signed with a legitimate code-signing certificate; antivirus
-false positives cannot be guaranteed absent. See `docs/SIMPLE-ONECLICK.md`.
-
----
-
-### R6.4 installer compiler fix
-
-R6.3 successfully compiled the game plugin but failed to compile the setup EXE
-(CS1525 / CS1002 at `BetterAstralParty.Setup.cs:265`). The stock Windows
-.NET Framework CSC does not support C# 7 `?? throw` expressions. The launch
-code now uses an ordinary null check and the packaging tool explicitly sets
-`/langversion:5` to prevent recurrence. **The actual Windows C# compilation
-must still be verified on the target PC**; packaging tests here use a stub
-compiler and do not represent executable runtime testing.
-
-Run `Build-And-Package.cmd` again, or use `OneClick-Package.cmd` if you
-already have a valid `local-build-manifest.json` export from a previous build.
-Use a fresh output ZIP name. This fix changes the installer engine, not the
-mod DLL or Steam game files.
-
-## Historical notes (R6.2 and older)
-
-## R6.2 quick fix for `Incomplete payload manifest`
-
-The R6.1 simple installer incorrectly rejected valid BepInEx payloads with more than
-150 manifest entries. **Do not delete game files or rebuild the game DLL.**
-
-If you already built `BetterAstralParty-1.2.1-SimpleInstall.zip`, run
-`Fix-Installer.cmd` from this R6.2 source; it searches the parent directory for
-the existing SimpleInstall ZIP, validates all file hashes, recompiles **only** the
-installer, and generates `BetterAstralParty-1.2.1-SimpleInstall-R6.2.zip`.
-The original ZIP and game files are not changed. If the ZIP is elsewhere, run:
-
-```powershell
-.\Fix-Installer.cmd --input 'Z:\Downloads\BetterAstralParty-1.2.1-SimpleInstall.zip'
-```
-
-Extract the **new** ZIP in a local folder and execute its `Install.cmd`. If you
-have not created a SimpleInstall ZIP yet, use `Build-And-Package.cmd` as before.
-See `docs/SIMPLE-ONECLICK.md` for the details. The ZIP is for local development,
-not a signed official release, and antivirus flags remain possible.
-
----
-
 # BetterAstralParty
+
+https://github.com/TSM701/BetterAstralParty의 포크버전 입니다.
+이 포크는 원본에서 있던 불편한점을 개선하는데 목적을 둡니다.
+
+
+원본에서 변화된 점은 다음과 같습니다.
+
+1. Install.cmd로 실행하면 자동으로 바탕화면에 바로가기 파일이 생성됩니다.
+2. 설치 과정중에 윈도우 바이러스 탐지에 걸리지 않도록 설치 과정 자체를 변경했습니다.
+3. 동봉된 Force-Uninstall.cmd 파일을 실행하면 버전 관계없이 BetterAstralParty 강제 삭제가 가능합니다.
+4. 자동으로 반응하는 '감사합니다' 팝업을 끌 수 있습니다.
+
+아래는 원본 소개문구 입니다.
+
+----------------------------------------------------------------------------------------------------------------------------------------
+
 
 [한국어](#한국어) · [English](#english)
 
@@ -222,6 +164,19 @@ BetterAstralParty 없이 실행하려면 Steam 클라이언트에서 Astral Part
 BetterAstralParty 자체 코드는 MIT 라이선스로 제공합니다. 외부 구성 요소의 고지와 대응 소스 안내는 `THIRD-PARTY-NOTICES/`에서 확인하세요. 소스 빌드 방법은 공개 소스 묶음의 `docs/BUILD.md`에 있습니다.
 
 ## English
+
+This is a fork of BetterAstralParty. https://github.com/TSM701/BetterAstralParty
+The purpose of this fork is to improve some of the inconveniences found in the original version.
+
+Changes from the Original Version
+1. Running Install.cmd automatically creates a desktop shortcut.
+2. The installation process has been modified to prevent Windows Defender from flagging it as a potential threat.
+3. The included Force-Uninstall.cmd allows you to forcibly uninstall BetterAstralParty, regardless of the installed version.
+4. Added an option to disable the automatic "Thank You" pop-up.
+
+Below is the original description of BetterAstralParty.
+
+---------------------------------------------------------------------------------------------------------------------------------------
 
 A Korean/English quality-of-life mod for Astral Party INT(Global), focused on PvE information and decision support.
 
