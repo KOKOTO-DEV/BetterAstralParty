@@ -19,7 +19,7 @@ namespace BetterAstralParty.Observability
     internal enum DiagnosticChannel { Stable, Beta, Unknown }
     internal enum DiagnosticHandMode { Hover, Click, Unknown }
     internal enum DiagnosticEndReason { ProcessExitCallback, OwnerDisposed, Unknown }
-    internal enum DiagnosticUiAction { Unknown, Open, Close, Features, General, Enabled, ShowDetails, KoMinimum, UseRealNames, CardPopups, BattleStatus, ShushuShield, FieldBuffs, DiagnosticLogging, MuteUnfocused, InputAttention, UiScale, Opacity, Language, HandLayout, UpdateAuth, UpdateSignOut, UpdateChannel, UpdateCheck, UpdateDownload, UpdateCancel, AutoDownload, ApplyAfterExit, UpdateReactivate, UpdateRecover, Details, Names, AfterExit, UpdateGet, Diagnostics, DiagnosticsOpen, DiagnosticsCollect, ScaleMinus, ScalePlus, OpacityMinus, OpacityPlus }
+    internal enum DiagnosticUiAction { Unknown, Open, Close, Features, General, Enabled, AutoThanks, ShowDetails, KoMinimum, UseRealNames, CardPopups, BattleStatus, ShushuShield, FieldBuffs, DiagnosticLogging, MuteUnfocused, InputAttention, UiScale, Opacity, Language, HandLayout, UpdateAuth, UpdateSignOut, UpdateChannel, UpdateCheck, UpdateDownload, UpdateCancel, AutoDownload, ApplyAfterExit, UpdateReactivate, UpdateRecover, Details, Names, AfterExit, UpdateGet, Diagnostics, DiagnosticsOpen, DiagnosticsCollect, ScaleMinus, ScalePlus, OpacityMinus, OpacityPlus }
 
     internal readonly struct DiagnosticOperation
     {

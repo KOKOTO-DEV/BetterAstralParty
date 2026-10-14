@@ -1,9 +1,17 @@
-﻿# Offline packaging policy; never loads the plugin or helper for execution.
+# Offline packaging policy; never loads the plugin or helper for execution.
 function Initialize-BapGaPackaging {
     $project=Split-Path -Parent $PSScriptRoot
     . (Join-Path $PSScriptRoot 'install-backup.ps1')
     . (Join-Path $PSScriptRoot 'install-policy.ps1')
-    if(!('Mono.Cecil.AssemblyDefinition' -as [type])){Add-Type -Path (Join-Path $project '.deps/bepinex/BepInEx/core/Mono.Cecil.dll')}
+    if(!('Mono.Cecil.AssemblyDefinition' -as [type])){
+        # Only load the pinned offline packaging reader; network/Internet zone paths
+        # can cause PowerShell Add-Type -Path to fail with 0x80131515.
+        $cecil=Join-Path $project '.deps/bepinex/BepInEx/core/Mono.Cecil.dll'
+        $expected='769A59793D4B8885BBBFBC5AEE8F57A0D4E34D275C56C60C03994309B87F67E9'
+        if(!(Test-Path -LiteralPath $cecil -PathType Leaf) -or (Get-FileHash -LiteralPath $cecil -Algorithm SHA256).Hash -cne $expected){throw 'Verified packaging metadata reader missing/mismatched.'}
+        $null=[Reflection.Assembly]::Load([IO.File]::ReadAllBytes($cecil))
+        if(!('Mono.Cecil.AssemblyDefinition' -as [type])){throw 'Verified packaging metadata reader could not load.'}
+    }
     if(!('BetterAstralParty.Packaging.GaPackageContract' -as [type])){
         $sources=@((Join-Path $PSScriptRoot 'DevelopmentPackageFiles.cs'),(Join-Path $PSScriptRoot 'GaPackageContract.cs'))
         $sources+=@(Get-ChildItem -LiteralPath (Join-Path $project 'updater') -File -Filter '*.cs'|Where-Object Name -ne 'UpdateHelperProgram.cs'|Sort-Object Name|ForEach-Object FullName)

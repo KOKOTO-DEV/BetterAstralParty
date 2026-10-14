@@ -313,6 +313,7 @@ internal static class ModUi
         AddToggle("MuteUnfocused", 440, 255);
         AddToggle("InputAttention", 440, 320);
         AddToggle("MatchFocus", 440, MenuLayout.ToggleY(4));
+        AddToggle("AutoThanks", 440, MenuLayout.ToggleY(18));
         AddToggle("UpdateChannel", 440, MenuLayout.ToggleY(7));
         AddToggle("UpdateCheck", 440, MenuLayout.ToggleY(8));
         AddToggle("UpdateDownload", 440, MenuLayout.ToggleY(9));
@@ -519,6 +520,7 @@ internal static class ModUi
     private static bool ToggleEnabled(string action) => action switch
     {
         "Enabled" => Plugin.Enabled.Value,
+        "AutoThanks" => Plugin.AutoThanks.Value,
         "KoMinimum" => Plugin.KoMinimum.Value,
         "CardPopups" => Plugin.CardPopups.Value,
         "HandLayout" => Plugin.GroupHand.Value,
@@ -771,6 +773,7 @@ internal static class ModUi
                 Refresh(); _helpAction = null; SetHelp(action); return;
             case "UpdateCancel": Plugin.Automatic.Cancel(); Refresh(); _helpAction = null; SetHelp(action); return;
             case "Enabled": Plugin.Enabled.Value = !Plugin.Enabled.Value; break;
+            case "AutoThanks": Plugin.AutoThanks.Value = !Plugin.AutoThanks.Value; AutoThanksUi.Clear(); break;
             case "Details": Plugin.ShowDetails.Value = !Plugin.ShowDetails.Value; break;
             case "KoMinimum": Plugin.KoMinimum.Value = !Plugin.KoMinimum.Value; if (!Plugin.KoMinimum.Value) CardDiceUi.Clear(); break;
             case "Names": Plugin.UseRealNames.Value = !Plugin.UseRealNames.Value; break;

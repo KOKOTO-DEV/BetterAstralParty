@@ -1,8 +1,84 @@
+# BetterAstralParty 1.2.1 R6.5 — desktop shortcut on install
+
+**Added:** `Install.cmd` now attempts to create a real **BetterAstralParty_1.2.1.lnk** on the current Windows desktop (including the Windows-configured OneDrive desktop) that targets the installed `8vJXnINT\Launch-BAP.cmd`. It uses Windows Shell Link COM directly through the existing `BetterAstralParty.Setup.exe`: no PowerShell, WScript, added binaries, administrator elevation, or additional launcher.
+
+- An existing same-named shortcut is **never overwritten**.
+- Failure to create the optional desktop shortcut prints a warning, but does not invalidate a verified game installation.
+- The setup receipt records the created shortcut's SHA-256. Ordinary `Uninstall.cmd` deletes it **only if unchanged and still pointing to this game's launch CMD**; modified/foreign shortcuts are kept.
+- `Force-Uninstall.cmd` detects the shortcut's actual target before offering to remove it, including when the receipt is missing. Shared BepInEx files and other desktop links remain untouched.
+- The installer can be packaged from the already-built DLL using `OneClick-Package.cmd`; recompiling the plugin is not required. The setup EXE must be recompiled via the packaging step.
+
+Actual Windows shortcut creation and game launches have **not** been verified in this Linux workspace. Source/ZIP and simulated packaging tests are not substitutes for an actual Windows installation test.
+
+---
+
+# BetterAstralParty 1.2.1 R6.4 — streamlined one-click offline installer
+
+**Build:** `Build-And-Package.cmd` compiles the plugin and creates the installer ZIP.
+**Install ZIP:** contains `Install.cmd`, `Uninstall.cmd`, `Force-Uninstall.cmd`,
+`BetterAstralParty.Setup.exe`, the SHA-256 payload manifest and verified files.
+**Install:** run `Install.cmd`; Steam INT game auto-detected, no `INSTALL` typing.
+**Normal uninstall:** `Uninstall.cmd`, confirm `Y`.
+**Force uninstall:** `Force-Uninstall.cmd`, confirm `Y` after deletion preview;
+removes BAP-specific game files and local user-data/recovery backups, but
+retains shared BepInEx/doorstop loader, other plugins, Steam and game content.
+**Developer-only:** `OneClick-Package.cmd` optionally packages a previous
+compiled export. Historical `Build-Local.cmd` and `Fix-Installer.cmd` are not
+needed for the one-click workflow and have been removed from this source ZIP.
+
+The Setup EXE is the offline file installer invoked by the CMD scripts, not
+an extra download or background service. The output is an unsigned *local*
+build unless signed with a legitimate code-signing certificate; antivirus
+false positives cannot be guaranteed absent. See `docs/SIMPLE-ONECLICK.md`.
+
+---
+
+### R6.4 installer compiler fix
+
+R6.3 successfully compiled the game plugin but failed to compile the setup EXE
+(CS1525 / CS1002 at `BetterAstralParty.Setup.cs:265`). The stock Windows
+.NET Framework CSC does not support C# 7 `?? throw` expressions. The launch
+code now uses an ordinary null check and the packaging tool explicitly sets
+`/langversion:5` to prevent recurrence. **The actual Windows C# compilation
+must still be verified on the target PC**; packaging tests here use a stub
+compiler and do not represent executable runtime testing.
+
+Run `Build-And-Package.cmd` again, or use `OneClick-Package.cmd` if you
+already have a valid `local-build-manifest.json` export from a previous build.
+Use a fresh output ZIP name. This fix changes the installer engine, not the
+mod DLL or Steam game files.
+
+## Historical notes (R6.2 and older)
+
+## R6.2 quick fix for `Incomplete payload manifest`
+
+The R6.1 simple installer incorrectly rejected valid BepInEx payloads with more than
+150 manifest entries. **Do not delete game files or rebuild the game DLL.**
+
+If you already built `BetterAstralParty-1.2.1-SimpleInstall.zip`, run
+`Fix-Installer.cmd` from this R6.2 source; it searches the parent directory for
+the existing SimpleInstall ZIP, validates all file hashes, recompiles **only** the
+installer, and generates `BetterAstralParty-1.2.1-SimpleInstall-R6.2.zip`.
+The original ZIP and game files are not changed. If the ZIP is elsewhere, run:
+
+```powershell
+.\Fix-Installer.cmd --input 'Z:\Downloads\BetterAstralParty-1.2.1-SimpleInstall.zip'
+```
+
+Extract the **new** ZIP in a local folder and execute its `Install.cmd`. If you
+have not created a SimpleInstall ZIP yet, use `Build-And-Package.cmd` as before.
+See `docs/SIMPLE-ONECLICK.md` for the details. The ZIP is for local development,
+not a signed official release, and antivirus flags remain possible.
+
+---
+
 # BetterAstralParty
 
 [한국어](#한국어) · [English](#english)
 
 ## 한국어
+
+> 수정 소스: 자동 감사합니다 ON/OFF 및 독립된 강제 제거 도구를 추가했습니다. 정식 설치·Steam 등록·업데이트는 원본 1.2.1 설치 파이프라인만 사용합니다. 배포 패키지 생성을 위해서는 기존 서명·승인 절차가 필요합니다.
 
 Astral Party 국제판 INT(Global)의 PvE 정보 표시와 판단을 돕는 한국어·영어 지원 편의성 모드입니다.
 
@@ -14,7 +90,7 @@ Astral Party 국제판 INT(Global)의 PvE 정보 표시와 판단을 돕는 한�
 - KO·생존 최소 조건, 전투 확률과 최종 피해 표시
 - 플레이어·몬스터 필드 인디케이터와 공개 버프·반격 표시
 - 카드·칩 핑 상세 팝업과 손패 정렬 옵션
-- 게임 기본 감사합니다 추천을 추천마다 한 번 자동 전송
+- 게임 기본 감사합니다 추천을 추천마다 한 번 자동 전송 (ON/OFF 선택 가능)
 - 인게임 모드 설정, 캐릭터 이름 옵션, 창 비활성화 시 음소거
 - PvE 매칭 성사 또는 직접 만든 PvE 방의 게임 시작 시 창 포커스
 - PvE 필드 휠 확대·축소와 턴 전환에도 유지되는 자유 시점, 자유 시점 카메라 종료 버튼
@@ -83,6 +159,8 @@ BetterAstralParty 없이 실행하려면 Steam 클라이언트에서 Astral Part
 
 - 배경 불투명도: 기본 100%이며 0~100% 사이에서 5%씩 조절합니다. 모드 전투 패널의 바탕만 바꾸고, 0%에서도 글자·아이콘·테두리는 유지합니다. 필드 인디케이터의 줌 반투명도와는 별개입니다.
 
+- 자동 감사합니다: 기본 ON이며 F8 → 일반 설정에서 개별 OFF가 가능합니다. 게임 기본 PvE 감사합니다 빠른 응답이 나올 때만 자동 확인하며, OFF여도 직접 클릭할 수 있습니다. PvP·관전·리플레이에서는 동작하지 않습니다.
+
 - 충돌 진단 로그: 기본 OFF이며 개별 ON·OFF가 가능합니다. 오류·성능·공개 전투 계산의 상세 진단을 기록합니다. OFF여도 기본 오류 로그와 진단 ZIP 생성은 유지합니다.
 
 - 업데이트 채널: 일반 사용자는 기본값인 안정판을 사용하세요. 선택한 채널의 저장소만 확인하고, 채널을 바꾸면 결과를 갱신하며 다운로드 페이지도 해당 저장소를 엽니다. 채널 선택만으로 파일을 교체하지는 않습니다.
@@ -91,9 +169,7 @@ BetterAstralParty 없이 실행하려면 Steam 클라이언트에서 Astral Part
 
 진단 폴더 열기·진단 ZIP 만들기, 업데이트 확인·다운로드 페이지·업데이트 받기·취소는 실행 버튼이며 ON·OFF 설정이 아닙니다. 새 버전의 변경 사항은 업데이트 알림 팝업에 표시합니다.
 
-#### 개별 설정이 없는 자동 동작
-
-- 자동 감사합니다는 현재 개별 OFF 옵션이 없습니다. 게임 기본 감사합니다 핑 추천이 표시되고 전송 가능하면, 추천 한 건당 한 번 자동으로 감사합니다 핑을 전송합니다. 창이 비활성 상태여도 작동하며, 일시적인 입력 잠금은 해제될 때까지 기다립니다. PvP·관전·재생에서는 전송하지 않습니다. 추천 자체를 새로 만들거나 다른 핑을 자동 전송하지는 않습니다.
+#### 그 밖의 자동 동작
 
 - 반격 표시 소리는 소리만 끄는 옵션이 없습니다. 모드가 추가한 전투·인카운트 반격 아이콘에 게임 원본 애니메이션과 효과음을 사용합니다. 모드 기능 → 전투 정보 표시를 OFF로 하면 해당 표시·소리를 함께 끕니다. 게임 원래 효과음 전체를 끄는 설정은 아닙니다.
 
@@ -157,7 +233,7 @@ A Korean/English quality-of-life mod for Astral Party INT(Global), focused on Pv
 - Minimum KO/survival conditions, combat probabilities and observed final damage
 - Player/monster field indicators with public buffs and counterattack markers
 - Detail popups for card and chip pings, and hand-layout options
-- Automatically send each native Thanks quick-chat recommendation once
+- Automatically send each native Thanks quick-chat recommendation once (toggle in General settings)
 - In-game settings, character-name options and mute on focus loss
 - Focus the game when a PvE match is found or a manually created PvE room starts
 - PvE field wheel zoom and free view across turns, with an Exit Free Camera button
@@ -226,6 +302,8 @@ When an existing configuration lacks the new entries, KO Conditions initially in
 
 - Opacity: defaults to 100%, adjustable from 0–100% in 5% steps. Changes only the background fill of mod battle panels; text, icons and borders remain visible even at 0%. Separate from zoom-dependent field-indicator translucency.
 
+- Automatic Thanks: ON by default and can be disabled under F8 → General settings. Confirms the native PvE Thanks quick-chat recommendation once per suggestion. OFF disables only automated confirmation; native manual input is unaffected.
+
 - Diagnostic Log: OFF by default and can be enabled or disabled independently. Records detailed errors, performance and public combat calculations. Basic error logs and diagnostics ZIP creation remain available when OFF.
 
 - Update Channel: general users should keep the default, Stable. Checks only the selected channel's repository. Switching refreshes its result and Download Page opens that repository. Selecting a channel does not replace files.
@@ -235,8 +313,6 @@ When an existing configuration lacks the new entries, KO Conditions initially in
 Open Diagnostics Folder, Create Diagnostics ZIP, Check Updates, Download Page, Get Update and Cancel Update are action buttons, not ON/OFF settings. Release notes appear in the update notification popup.
 
 #### Automatic behavior without individual settings
-
-- Automatic Thanks has no individual OFF option. When the game's native Thanks recommendation appears and can be sent, the mod automatically sends the Thanks ping once per recommendation. Works while unfocused and waits for temporary input locks to clear. Excludes PvP, spectators and replays. Does not create recommendations or automatically send other pings.
 
 - Counter-indicator sound has no sound-only option. Added combat/encounter counter icons use the game's native animation and sound. Turn OFF Mod Features → Battle Info to remove these added indicators and their sound together. This does not silence all native game effects.
 
@@ -287,3 +363,62 @@ Include the mod version, reproduction steps, screenshots and relevant logs or di
 ### Source and licenses
 
 BetterAstralParty-owned code is provided under the MIT license. See `THIRD-PARTY-NOTICES/` for third-party notices and corresponding-source information. Build instructions are in `docs/BUILD.md` in the public source archive.
+
+## Modified source R3 — local install ZIP generation
+
+The previous `Build-Local.cmd` stops at DLL/EXE compilation. Use **`Package-Local.cmd`** afterward to produce an actually installable **unsigned local-development** ZIP by combining the locally compiled plugin and the original 1.2.1 release's SHA-256-verified loader/compatibility files. The resulting ZIP contains `Install-Local.cmd`, `Launch-Local.cmd` and `Uninstall-Local.cmd` but cannot be installed over an official BetterAstralParty instance. The official signed launcher/helper and update trust remain untouched and are not impersonated. See `docs/LOCAL-DEVELOPMENT.md` and bundled `LOCAL-INSTALL-README.md` for the two-step process, prerequisites and limitations. It disables BetterAstralParty automatic download/apply in the separate local install only.
+
+**One run:** `Build-And-Package.cmd`. **Already compiled:** `Package-Local.cmd`. Both create only an unsigned LOCAL development install ZIP; the original signed GA `Install.cmd` must not be used with these artifacts.
+
+
+### 수정 소스 통합 빌드
+
+이 저장소는 원본 1.2.1의 `Install.cmd`, `Uninstall.cmd`, `tools/find-game.ps1`,
+Steam 바로가기 등록 및 전체 설치 영수증·복구·서명 검증을 유지합니다.
+별도 `LocalDev` 설치기를 사용하지 않습니다.
+
+`Build-And-Package.cmd`는 컴파일과 원본 GA 패키징을 연결하는 도구입니다.
+기본 실행 결과는 **미승인 검토용 candidate**이며 설치 가능한 ZIP이 아닙니다.
+정식 설치 ZIP을 생성하려면 해당 바이너리에 대한 유효한 Helper/업데이트
+서명과 외부 빌드 승인 기록을 기존 `package-ga.ps1`에 전달해야 합니다.
+공식 업데이트 서명을 모방하거나 승인 목록을 임의 생성하지 않습니다.
+세부 절차: `docs/INTEGRATED-RELEASE.md`.
+
+`Force-Uninstall.cmd`는 별도 확인이 필요한 파괴적 제거 도구로,
+사용자 설정·로그·복구 백업까지 삭제할 수 있습니다. 일반 제거는 `Uninstall.cmd`를 사용하세요.
+
+---
+
+## R6 — simplified offline one-click install package (antivirus false-positive reduction)
+
+**Recommended for personal unsigned development builds:** use
+`Build-And-Package.cmd` to compile only the plugin and generate an extractable,
+installable ZIP in a single operation, or `OneClick-Package.cmd` to reuse an
+existing compiled `export` DLL. The ZIP contains a small, readable .NET
+Framework installer rather than the original installer PowerShell chain,
+launcher and update helper. This avoids **some** patterns that can lead to
+false alarms, but does not promise antivirus acceptance.
+
+The generated ZIP contains `Install.cmd`, `Uninstall.cmd`, compiled
+`BetterAstralParty.Setup.exe`, and verified BepInEx/mod files. `Install.cmd`
+auto-detects Steam's INT game directory, requires a user confirmation, installs
+only non-conflicting files and disables the local auto-updater. It creates
+`Launch-BAP.cmd` for manual game launch; the installed setup executable performs the original compatibility review before activating the plugin. It refuses to mix with an existing
+official BetterAstralParty install or recovery markers. Optional publisher
+Authenticode signing is supported for the installer EXE if you already own
+an accepted certificate. This does **not** create official BetterAstralParty
+release signing/approval or bypass its signing checks.
+
+Full details: `docs/SIMPLE-ONECLICK.md`. The previous integrated official
+pipeline remains available for review as `Original-Release-Review.cmd`.
+The earlier R5 manifests/records are historical; `R6-SOURCE-MANIFEST.json`
+indexes this revised source bundle.
+
+
+### R6.3 local launch fix
+
+R6.2 started the game but omitted the mod compatibility-approved launch signal,
+leaving the F8 menu disabled. R6.3 uses the existing .NET setup executable as
+a verified launcher so that compatibility checks precede plugin activation.
+See `docs/SIMPLE-ONECLICK.md`. Existing local installations require the
+local uninstall/reinstall sequence for the new payload ownership manifest.

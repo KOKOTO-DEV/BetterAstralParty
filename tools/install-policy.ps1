@@ -200,7 +200,13 @@ function Open-BapInstallBundle([string]$PackageRoot,[string]$GameRoot,[string]$R
         }
         $cecil=Join-Path $package '.deps/bepinex/BepInEx/core/Mono.Cecil.dll'
         if($hashes['.deps/bepinex/BepInEx/core/Mono.Cecil.dll'] -cne '769A59793D4B8885BBBFBC5AEE8F57A0D4E34D275C56C60C03994309B87F67E9'){throw '메타데이터 검사 도구가 일치하지 않습니다. / Metadata reader hash mismatch.'}
-        if(-not ('Mono.Cecil.AssemblyDefinition' -as [type])){Add-Type -Path $cecil}
+        # The package manifest and pinned SHA-256 were checked above. Loading
+        # verified bytes avoids 0x80131515 for Internet-zone / mapped drives.
+        # Never relax either hash check to fix an assembly-load failure.
+        if(-not ('Mono.Cecil.AssemblyDefinition' -as [type])){
+            $null=[Reflection.Assembly]::Load([IO.File]::ReadAllBytes($cecil))
+            if(-not ('Mono.Cecil.AssemblyDefinition' -as [type])){throw 'Verified Mono.Cecil assembly failed to load.'}
+        }
         $owned=@{
             'AstralParty-Vanilla.cmd'='tools/AstralParty-Vanilla.cmd'
             'BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll'='artifacts/BetterAstralParty.dll'

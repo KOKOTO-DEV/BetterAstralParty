@@ -50,7 +50,7 @@ internal static class MenuLayout
         top + buttonHeight + height + 4 <= bottom ? top + buttonHeight + 4 : Math.Max(8, top - height - 4);
     internal static string OptionHelp(string action, string value) =>
         StateHelp(action, value is not ("Native" or "Off"), value);
-    internal static bool GeneralControl(string action) => action is "Language" or "Diagnostics" or "DiagnosticsOpen" or "DiagnosticsCollect" or "MuteUnfocused" or "InputAttention" or "MatchFocus"
+    internal static bool GeneralControl(string action) => action is "AutoThanks" or "Language" or "Diagnostics" or "DiagnosticsOpen" or "DiagnosticsCollect" or "MuteUnfocused" or "InputAttention" or "MatchFocus"
         or "UpdateAuth" or "UpdateSignOut"
         or "UpdateChannel" or "UpdateCheck" or "UpdateDownload" or "AutoDownload" or "AfterExit" or "UpdateGet" or "UpdateCancel"
         or "ScaleMinus" or "ScalePlus" or "OpacityMinus" or "OpacityPlus";
@@ -58,6 +58,7 @@ internal static class MenuLayout
     internal static string StateHelp(string action, bool enabled, string mode) => action switch
     {
         "Language" => mode switch { "한국어" => "모드 설명을 한국어로 표시합니다.\n게임 자체 언어는 변경하지 않습니다.", "English" => "모드 설명을 영어로 표시합니다.\n게임 자체 언어는 변경하지 않습니다.", _ => "자동 선택은 게임 메뉴 언어에 맞춰\n모드 설명 언어를 설정합니다.\n게임 자체 언어는 변경하지 않습니다." },
+        "AutoThanks" => enabled ? "게임의 PvE 기본 감사합니다 빠른 응답을 자동으로 누릅니다.\n직접 입력은 그대로 가능합니다." : "감사합니다 자동 클릭을 중단합니다.\n원본 버튼은 직접 사용할 수 있습니다.",
         "Names" => enabled ? "캐릭터 이름을 본명으로 표시합니다.\n계정 닉네임은 변경하지 않습니다." : "캐릭터 이름을 이명으로 표시합니다.\n계정 닉네임은 변경하지 않습니다.",
         "HandLayout" => !enabled ? "손패를 게임의 기본 배치로 표시합니다." : mode == "Click" ? "묶음을 클릭하면 가로로 펼칩니다.\n다른 곳을 클릭하면 접습니다.\n접힌 카드는 반투명하게 표시합니다." : "묶음에 마우스를 올리면 위로 펼칩니다.\n마우스가 벗어나면 접습니다.\n접힌 카드는 반투명하게 표시합니다.",
         "ShushuShield" => enabled ? "전투 중 활성 쉴드를 캐릭터에 표시합니다.\n쉴드가 있는 내가 방어자이면\n방어 버튼과 방어 카드를 잠급니다." : "모드의 전투 쉴드 표시와\n방어 버튼·카드 잠금을 적용하지 않습니다.",
@@ -78,6 +79,7 @@ internal static class MenuLayout
 
     internal static (string Title, string Body) Help(string action) => action switch
     {
+        "AutoThanks" => ("자동 감사합니다", "기본 ON. 원본 게임의 PvE 감사합니다\n빠른 응답이 표시될 때만 자동 확인합니다.\nOFF 해도 직접 클릭할 수 있습니다."),
         "Language" => ("언어", "자동은 게임 메뉴의 언어를 따릅니다.\n클릭: 자동 → 한국어 → English\n게임 자체 언어는 바꾸지 않습니다."),
         "Features" => ("모드 기능", "기능별 표시 설정을 변경합니다."),
         "General" => ("일반 설정", "언어·음소거·알림·진단을 설정합니다."),

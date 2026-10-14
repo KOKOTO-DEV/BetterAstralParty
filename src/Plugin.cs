@@ -17,6 +17,7 @@ public sealed class Plugin : BasePlugin
     public const string SettingsSchema = "1";
 
     internal static ConfigEntry<bool> Enabled { get; private set; } = null!;
+    internal static ConfigEntry<bool> AutoThanks { get; private set; } = null!;
     internal static ConfigEntry<bool> ShowDetails { get; private set; } = null!;
     internal static ConfigEntry<bool> KoMinimum { get; private set; } = null!;
     internal static ConfigEntry<bool> UseRealNames { get; private set; } = null!;
@@ -96,6 +97,7 @@ public sealed class Plugin : BasePlugin
         catch (Exception ex) {DiagnosticHub.Failure(DiagnosticFeature.Loader, DiagnosticPhase.BootstrapGate, DiagnosticCode.Prerequisite, ex);Log.LogError("업데이트 복구가 필요해 모드 로드를 중단합니다. 게임과 모드 런처를 닫고 복구 안내를 확인하세요. / Mod load blocked: update recovery required. Close the game and mod launcher and follow the recovery guide.");return;}
         DiagnosticHub.Stage(DiagnosticFeature.Loader, DiagnosticPhase.BootstrapGate, DiagnosticOutcome.Completed);
         LoadStage(DiagnosticPhase.Configuration);
+        AutoThanks = Config.Bind("일반", "자동 감사합니다", true, "PvE 게임의 원본 빠른 응답 추천에 표시된 감사합니다를 자동으로 누릅니다. OFF 시 자동 클릭만 중단합니다. / Automatically confirms the native PvE Thanks recommendation; OFF leaves manual input intact.");
         Enabled = Config.Bind("일반", "활성화", true, "PvE 전투 추천: 공격·놓아주기, 방어·회피, 카드 판단을 표시합니다. 공개 수치와 기본 규칙을 사용하며 특수 효과·추가 카드·임무 보상은 계산하지 않습니다.");
         ShowDetails = Config.Bind("전투 추천", "상세 확률 표시", true, "추천 호버의 피해·전투불능 확률을 표시합니다. KO·생존 최소 조건은 별도 설정입니다. / Hover damage and KO probabilities; minimum conditions have their own setting.");
         // Preserve the previously effective indicator state on the first upgrade only.

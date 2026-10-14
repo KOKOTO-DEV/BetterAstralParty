@@ -7,12 +7,13 @@ DLLs, fonts and Steam artwork are supplied locally by their authorized owners.
 
 ## Local prerequisites
 
-The verified toolchain is Windows x64, .NET SDK 8.0.425, PowerShell 7 and the
+The verified toolchain is Windows x64, .NET SDK 8.0.425 or a later 8.0.4xx patch, PowerShell 7 and the
 local Windows Framework64/v4.0.30319 reference assemblies. The plugin targets
 .NET 6 and requires Microsoft.NETCore.App.Ref 6.0.36 locally; install the
 corresponding .NET 6 SDK/targeting pack before an offline restore. The source
-export contains neither an SDK nor proprietary references. global.json pins
-the tested compiler. The helper also explicitly selects Roslyn 8.0.425.
+export contains neither an SDK nor proprietary references. global.json requires
+SDK 8.0.425 or later in the 8.0.4xx patch band via latestPatch. The helper
+uses a compatible installed Roslyn version, and does not upgrade to .NET 9.
 
 Legally install the matching INT(Global) game and initialize its supported
 BepInEx loader to generate game interop references. Obtain the unchanged
@@ -73,3 +74,15 @@ archives and follow their upstream build instructions. SOURCES.md documents the
 removed proprietary reference DLLs and replacement/relinking procedure. No game
 license is supplied by this source export, and BetterAstralParty imposes no extra
 restriction on modifying or debugging those libraries.
+
+## Modified 1.2.1 source: simple local build
+
+`Build-Local.cmd` or `tools/build-local.ps1` compiles all three outputs using explicit local Windows paths and records their hashes. See `docs/LOCAL-DEVELOPMENT.md` for instructions and scope. The resulting ZIP is a **local compiler output, not an installable/signed whole package**. The existing GA packaging tools still require their own reviewed artifact closure, approval and signatures. `Force-Uninstall.cmd` is a separate, destructive, confirmed, mod-specific cleanup tool, not the default Uninstall.cmd.
+
+
+## Integrated original-installer packaging
+
+Use `Build-And-Package.cmd` and `docs/INTEGRATED-RELEASE.md`. The original
+installer/Steam/update/receipt flow is preserved. An unsigned candidate is
+not an installation artifact. Trusted signing and external release approval
+are required for an installable package.

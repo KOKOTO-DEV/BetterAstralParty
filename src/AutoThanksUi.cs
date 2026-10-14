@@ -10,7 +10,7 @@ internal static class AutoThanksUi
 
     internal static void Tick()
     {
-        if (!Compatibility.Allowed(Feature)) return;
+        if (Plugin.AutoThanks == null || !Plugin.AutoThanks.Value || !Compatibility.Allowed(Feature)) return;
         try
         {
             var root = GameUi.Root;
