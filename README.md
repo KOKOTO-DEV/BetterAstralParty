@@ -172,6 +172,7 @@ Changes from the Original Version
 - The installation process has been modified to prevent Windows Defender from flagging it as a potential threat.
 - The included Force-Uninstall.cmd allows you to forcibly uninstall BetterAstralParty, regardless of the installed version.
 - Added an option to disable the automatic "Thank You" pop-up.
+
 Below is the original description of BetterAstralParty.
 
 ----------------------------------------------------------------------------------------------------------------------
