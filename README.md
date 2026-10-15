@@ -1,23 +1,5 @@
 # BetterAstralParty
 
-https://github.com/TSM701/BetterAstralParty의 포크버전 입니다.
-
-이 포크는 원본에서 있던 불편한점을 개선하는데 목적을 둡니다.
-
-
-
-원본에서 변화된 점은 다음과 같습니다.
-
-1. Install.cmd로 실행하면 자동으로 바탕화면에 바로가기 파일이 생성됩니다.
-2. 설치 과정중에 윈도우 바이러스 탐지에 걸리지 않도록 설치 과정 자체를 변경했습니다.
-3. 동봉된 Force-Uninstall.cmd 파일을 실행하면 버전 관계없이 BetterAstralParty 강제 삭제가 가능합니다.
-4. 자동으로 반응하는 '감사합니다' 팝업을 끌 수 있습니다.
-
-아래는 원본 소개문구 입니다.
-
-----------------------------------------------------------------------------------------------------------------------------------------
-
-
 [한국어](#한국어) · [English](#english)
 
 ## 한국어
@@ -167,19 +149,6 @@ BetterAstralParty 자체 코드는 MIT 라이선스로 제공합니다. 외부 �
 
 ## English
 
-This is a fork of BetterAstralParty. https://github.com/TSM701/BetterAstralParty
-The purpose of this fork is to improve some of the inconveniences found in the original version.
-
-Changes from the Original Version
-1. Running Install.cmd automatically creates a desktop shortcut.
-2. The installation process has been modified to prevent Windows Defender from flagging it as a potential threat.
-3. The included Force-Uninstall.cmd allows you to forcibly uninstall BetterAstralParty, regardless of the installed version.
-4. Added an option to disable the automatic "Thank You" pop-up.
-
-Below is the original description of BetterAstralParty.
-
----------------------------------------------------------------------------------------------------------------------------------------
-
 A Korean/English quality-of-life mod for Astral Party INT(Global), focused on PvE information and decision support.
 
 [Download the latest stable release](https://github.com/TSM701/BetterAstralParty/releases/latest)
@@ -320,4 +289,3 @@ Include the mod version, reproduction steps, screenshots and relevant logs or di
 ### Source and licenses
 
 BetterAstralParty-owned code is provided under the MIT license. See `THIRD-PARTY-NOTICES/` for third-party notices and corresponding-source information. Build instructions are in `docs/BUILD.md` in the public source archive.
-

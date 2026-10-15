@@ -1,0 +1,317 @@
+{
+  "schema": 1,
+  "created": "2026-10-15T08:22:16.319493+00:00",
+  "reviewNote": "Local PC 3.3.0 review: v31 metadata bounds and all three Harmony hook shapes checked; plugin compiled with regenerated 3.3.0 interop, zero warnings/errors. Native engine/loader hashes pinned. Menu launch verification pending; combat features not yet verified. Not an official release.",
+  "cacheCatalogs": [
+    "catalog_3.3.0.hash",
+    "catalog_3.3.0.json"
+  ],
+  "files": [
+    {
+      "root": "game",
+      "path": "AstralParty_INT.exe",
+      "kind": "code-engine-catalog",
+      "sha256": "42B0B5CEE9109DDFDE25562A27404529C05349D030E548F66A52CD5748EFB120"
+    },
+    {
+      "root": "game",
+      "path": "GameAssembly.dll",
+      "kind": "code-engine-catalog",
+      "sha256": "27A1215326741786D41E82A4335669727A3A6F6283EF2C025BF2C0A97002D7E2"
+    },
+    {
+      "root": "game",
+      "path": "UnityPlayer.dll",
+      "kind": "code-engine-catalog",
+      "sha256": "15C7D26AAEE4D0225BB40658F26A72F8251F5F049A8F304CD5159245247AAFA3"
+    },
+    {
+      "root": "game",
+      "path": "winhttp.dll",
+      "kind": "code-engine-catalog",
+      "sha256": "8C6CDBC38836DEE87E3368F5DE1994D7C0CCEBF29E4CE7ABA3C0981F9375412C"
+    },
+    {
+      "root": "game",
+      "path": "baselib.dll",
+      "kind": "code-engine-catalog",
+      "sha256": "1E35BE4C04D748071D98247C199EAA6DDFCBD297E3DE96842C27576777A691FD"
+    },
+    {
+      "root": "game",
+      "path": "AstralParty_INT_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "kind": "code-engine-catalog",
+      "sha256": "8B287B86E8BF0F5BD3B384A71394FB4A3F880C51EB2A573DBFF472399414E5AE"
+    },
+    {
+      "root": "game",
+      "path": "AstralParty_INT_Data/ScriptingAssemblies.json",
+      "kind": "code-engine-catalog",
+      "sha256": "57484FD29C75BC048CAC7B267B738A502B14A6F8CC2D4CC894E45D65107036C8"
+    },
+    {
+      "root": "game",
+      "path": "AstralParty_INT_Data/RuntimeInitializeOnLoads.json",
+      "kind": "code-engine-catalog",
+      "sha256": "40BAF1073A0F79A4AC0E1412767B01B0394B333A21515ED37CF3280ED92C8A30"
+    },
+    {
+      "root": "game",
+      "path": "AstralParty_INT_Data/StreamingAssets/aa/settings.json",
+      "kind": "code-engine-catalog",
+      "sha256": "2A6A499AE2BBE70BE46917B4AD570DFDBD70AD465E2351D80E8E1E1F858B7924"
+    },
+    {
+      "root": "game",
+      "path": "AstralParty_INT_Data/StreamingAssets/aa/catalog.bundle",
+      "kind": "code-engine-catalog",
+      "sha256": "F89CAC8267608CC930652F735209C9198E0A043360550D74498960B50681F53B"
+    },
+    {
+      "root": "game",
+      "path": "AstralParty_INT_Data/data.unity3d",
+      "kind": "resources-review-required",
+      "sha256": "767265D8AD1C8DA12008E7A1720B87CCA4A927BA0BA39EFFE0E864A662562D91"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/0Harmony.dll",
+      "kind": "loader-native",
+      "sha256": "6C898933B52149E8BCF6722305C7E4D94ADD47C9E53B364096F91721624C0877"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/AsmResolver.dll",
+      "kind": "loader-native",
+      "sha256": "64B50030B34654F12805EC4D2848551E431C5F0BCD65CD70D6FE2845F715FB12"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/AsmResolver.DotNet.dll",
+      "kind": "loader-native",
+      "sha256": "045BCDF32427F9BD39BEE2620C470372583935C8E89B360931E467DD191D46D1"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/AsmResolver.PE.dll",
+      "kind": "loader-native",
+      "sha256": "6BA6D56BF5FD3DD18233B56606A7ED1D42B8C93977B5375716771BF13EA36A1E"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/AsmResolver.PE.File.dll",
+      "kind": "loader-native",
+      "sha256": "8246433A1A6FB4C012C1814ACEE8A4FF24F3A4FAC593569F6A1E343E68C9D8EE"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/AssetRipper.CIL.dll",
+      "kind": "loader-native",
+      "sha256": "1EEFF8D76DDA5D65E5145AB0D43A3DAC672E096E5692C47E0382EBB3C7C817F9"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/AssetRipper.Primitives.dll",
+      "kind": "loader-native",
+      "sha256": "681BA26FD356D9263FDF6AFEB1B8F8506802A9503FFA80C9D21E0C4A46743A28"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/BepInEx.Core.dll",
+      "kind": "loader-native",
+      "sha256": "1D492EEECD40CD4FEB7DC35AFF7F08839928AC1637D4993BBDE0060DE36B7E0A"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/BepInEx.Preloader.Core.dll",
+      "kind": "loader-native",
+      "sha256": "1A2824268A24D3ECA2931DAA7B7B378D7338A542502BCF9E2261919095B1EB97"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/BepInEx.Unity.Common.dll",
+      "kind": "loader-native",
+      "sha256": "1E15D7ADA3416D9FECB4514377CA297783AC25877BD53E0FD7DDD32A6CD37369"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/BepInEx.Unity.IL2CPP.dll",
+      "kind": "loader-native",
+      "sha256": "46CF1EF802BDF8CB6587FC1E4D98F7AF1073A60487B39A64E230E6F6E4C23AEC"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/Cpp2IL.Core.dll",
+      "kind": "loader-native",
+      "sha256": "A7AE866298472BFA5176C1B5B71ADFA9FE6E2F1DEEF7B8D50F063C0E2C0BA258"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/Disarm.dll",
+      "kind": "loader-native",
+      "sha256": "40E804C35369825884534734725D06831A534759478C8D9F3F908D80779A1A93"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/dobby.dll",
+      "kind": "loader-native",
+      "sha256": "8015DE7D867245A1095D13947A63763878E4CF5FD3D3089B63CC39200B055DED"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/Gee.External.Capstone.dll",
+      "kind": "loader-native",
+      "sha256": "18F9CFBFD10B479143A46B3E417CCFCE4A62D4C2770DA9ED12D553A0B326302C"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/Iced.dll",
+      "kind": "loader-native",
+      "sha256": "F058C01321B4CDFC9B9151879E88E59571C8D0BA176FBCF95BC936A8F3D073ED"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/Il2CppInterop.Common.dll",
+      "kind": "loader-native",
+      "sha256": "070E04F2276A8963A6D2A7EB52D43B644F3AE9AA3816C34541124D3862F1B37F"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/Il2CppInterop.Generator.dll",
+      "kind": "loader-native",
+      "sha256": "95364BF2686F50D114784E482A0E78C472F6A649D07EA31A075328B2B756899D"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/Il2CppInterop.HarmonySupport.dll",
+      "kind": "loader-native",
+      "sha256": "F7612EA2E5A4D473B771F34EE3B20CF32DC0C4ECEA0185416474999A17FBCC07"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/Il2CppInterop.Runtime.dll",
+      "kind": "loader-native",
+      "sha256": "65AB051A681C2C1E52DF7596FF738BE401AAE72CFF882FF18241CF54A3EA38A4"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/LibCpp2IL.dll",
+      "kind": "loader-native",
+      "sha256": "DD3BD5417CAC3FD203B906A90DBAE6719136E61F43C2B4EED55F56242BB10A14"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/Mono.Cecil.dll",
+      "kind": "loader-native",
+      "sha256": "769A59793D4B8885BBBFBC5AEE8F57A0D4E34D275C56C60C03994309B87F67E9"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/Mono.Cecil.Mdb.dll",
+      "kind": "loader-native",
+      "sha256": "61637F9940E5E336571CBF945BE0F36D6D6050E06288DF0F0232D93B26F0BDE7"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/Mono.Cecil.Pdb.dll",
+      "kind": "loader-native",
+      "sha256": "A5249A04AD8FD7DFD47E4D0A620AED0F7EB6051E1DDEC102C541CA3E12F6E2A8"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/Mono.Cecil.Rocks.dll",
+      "kind": "loader-native",
+      "sha256": "273292BABD45F9F34DE5054BD9CDFE1D859A7DBF6F4AD5974FE4EAD70698ED5B"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/MonoMod.Backports.dll",
+      "kind": "loader-native",
+      "sha256": "CDD6E9F7BCDB98D2C002F63BFBE85AE80EA36261190A741E64283D769A6C6502"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/MonoMod.ILHelpers.dll",
+      "kind": "loader-native",
+      "sha256": "0081403BDCEF3340F78C7CCDED0BE6AE0507B397EE8B9980B44F01BF9F93AED1"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/MonoMod.RuntimeDetour.dll",
+      "kind": "loader-native",
+      "sha256": "1B3D55F53CB9F9F2550DAED4DFD300B247D71698A0ACE82BC7B9FF38D563594F"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/MonoMod.Utils.dll",
+      "kind": "loader-native",
+      "sha256": "72A5B4249985873D7ECB160CBBED7A1E6540A38EE7618C72C64B9CB068C1438A"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/SemanticVersioning.dll",
+      "kind": "loader-native",
+      "sha256": "A5B57607225A0EBDE049E93469F49E5B2D07A7D602A03864CE3A72CCF57103A2"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/StableNameDotNet.dll",
+      "kind": "loader-native",
+      "sha256": "280373B93A140395489D714703AC61F8D02C7AA07AC6E34024F8F0E26901325A"
+    },
+    {
+      "root": "game",
+      "path": "BepInEx/core/WasmDisassembler.dll",
+      "kind": "loader-native",
+      "sha256": "F837036E0DB02D6F3DDE76DE573FD9A847A1175D61818607E40C46952F5C66C0"
+    },
+    {
+      "root": "game",
+      "path": "AstralParty_INT_Data/Plugins/x86_64/abci.dll",
+      "kind": "loader-native",
+      "sha256": "F4D5D4D0DA3027978D75C31448E9F7DE5A0004254CC32E16577231FC43BFFDD0"
+    },
+    {
+      "root": "game",
+      "path": "AstralParty_INT_Data/Plugins/x86_64/AkSoundEngine.dll",
+      "kind": "loader-native",
+      "sha256": "C6DBFD6AEEE49090DA3089F758528AA8E079CB285DD845E634FF2B0793B00ACD"
+    },
+    {
+      "root": "game",
+      "path": "AstralParty_INT_Data/Plugins/x86_64/cri_ware_unity.dll",
+      "kind": "loader-native",
+      "sha256": "1F569AB3574D2CC0E6898606CAB44B1CE06526413315DEDA0CCE0DFC81DB840D"
+    },
+    {
+      "root": "game",
+      "path": "AstralParty_INT_Data/Plugins/x86_64/FlowSDK.dll",
+      "kind": "loader-native",
+      "sha256": "D3C9F938CC6F168C4A26310577D17248747F23093FFBBC417E71C7B04BDBCF05"
+    },
+    {
+      "root": "game",
+      "path": "AstralParty_INT_Data/Plugins/x86_64/lib_burst_generated.dll",
+      "kind": "loader-native",
+      "sha256": "5F43E190ADADCFB11ECAE1762A05CA20555744233A7D84013B7B178B8D5BF527"
+    },
+    {
+      "root": "game",
+      "path": "AstralParty_INT_Data/Plugins/x86_64/steam_api64.dll",
+      "kind": "loader-native",
+      "sha256": "670D654AA3255C5061CF0236A1CDBB2F5076CBD5AE44F613B6F4921558E83E2D"
+    },
+    {
+      "root": "cache",
+      "path": "catalog_3.3.0.hash",
+      "kind": "downloaded-catalog",
+      "sha256": "6C08DDEBBC9B12172838C2DD5641FCD9CF569DF989D176BA3943D0DCE70E16F7"
+    },
+    {
+      "root": "cache",
+      "path": "catalog_3.3.0.json",
+      "kind": "downloaded-catalog",
+      "sha256": "7920390FC7740406FCE92D0BFCC05F775BACDF2854E50399DB6E0110936B8E34"
+    }
+  ]
+}

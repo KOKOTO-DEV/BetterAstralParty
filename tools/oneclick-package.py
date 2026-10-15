@@ -176,7 +176,39 @@ def code_sign(exe:Path, thumbprint):
     subprocess.run(command,check=True)
     subprocess.run([signtool,'verify','/pa',str(exe)],check=True)
 
-def prepare(build,release,out,csc,thumbprint):
+def reviewed_compatibility(path):
+    raw=data(path,8_000_000)
+    doc=json.loads(raw.decode('utf-8-sig'))
+    require(doc.get('schema')==1 and isinstance(doc.get('files'),list) and 5<=len(doc['files'])<=512,
+            'Invalid reviewed compatibility manifest')
+    require(isinstance(doc.get('reviewNote'),str) and doc['reviewNote'].strip(), 'Compatibility review note required')
+    seen=set()
+    for row in doc['files']:
+        require(isinstance(row,dict) and row.get('root') in ('game','cache'), 'Invalid compatibility root')
+        name=relative(row.get('path'))
+        require(re.fullmatch('[A-Fa-f0-9]{64}',row.get('sha256','')) is not None,'Invalid compatibility SHA256')
+        key=row['root']+'/'+name
+        require(key.casefold() not in seen,'Duplicate compatibility path')
+        seen.add(key.casefold())
+        if row['root']=='cache': require('/' not in name,'Catalog guard requires flat cache catalog paths')
+    required=['AstralParty_INT.exe','GameAssembly.dll','UnityPlayer.dll','winhttp.dll',
+              'AstralParty_INT_Data/StreamingAssets/aa/settings.json',
+              'AstralParty_INT_Data/StreamingAssets/aa/catalog.bundle','AstralParty_INT_Data/data.unity3d',
+              'AstralParty_INT_Data/il2cpp_data/Metadata/global-metadata.dat']
+    require(all(('game/'+n).casefold() in seen for n in required),'Incomplete reviewed game baseline')
+    catalogs=doc.get('cacheCatalogs')
+    require(isinstance(catalogs,list) and len(catalogs)==2 and len(set(catalogs))==2,'One active catalog pair required')
+    versions=[]
+    for n in catalogs:
+        require(isinstance(n,str),'Invalid catalog name')
+        match=re.fullmatch(r'catalog_([0-9]+\.[0-9]+\.[0-9]+)\.(json|hash)',n)
+        require(match is not None and ('cache/'+n).casefold() in seen,'Unpinned active catalog')
+        versions.append((match.group(1),match.group(2)))
+    require(versions[0][0]==versions[1][0] and {v[1] for v in versions}=={'json','hash'},'Mismatching catalog pair')
+    require({r['path'] for r in doc['files'] if r['root']=='cache'}==set(catalogs),'Unexpected cache baseline')
+    return raw
+
+def prepare(build,release,out,csc,thumbprint,compatibility_review=None):
     require(not out.exists(), 'Output already exists (do not overwrite): '+str(out))
     require(out.suffix.lower()=='.zip','Output must have ZIP extension')
     _,source=release_lookup(release)
@@ -214,6 +246,9 @@ def prepare(build,release,out,csc,thumbprint):
     name,record=source['artifacts/betterastralparty.compatibility.json']
     raw=data(release/name)
     require(sha(raw)==record['sha256'].upper() and len(raw)==record['bytes'],'Release compatibility file hash/size mismatch')
+    if compatibility_review is not None:
+        raw=reviewed_compatibility(compatibility_review)
+        print('Using explicitly reviewed local compatibility baseline:',compatibility_review)
     payload('BetterAstralParty.compatibility.json',raw)
     payload('BepInEx/plugins/BetterAstralParty/BetterAstralParty.dll',plugin)
     payload('Launch-BAP.cmd',data(ROOT/'simple-installer/Launch-BAP.cmd'))
@@ -271,6 +306,7 @@ def main(argv=None):
     p.add_argument('--output',help='Output ZIP filename')
     p.add_argument('--csc',help='Windows Framework64 csc.exe path')
     p.add_argument('--sign-thumbprint',help='Optional real trusted code-signing certificate thumbprint; requires signtool')
+    p.add_argument('--compatibility-review',help='Explicit reviewed local game/catalog SHA256 manifest; launch checks remain mandatory')
     p.add_argument('--compile',action='store_true',help='Compile modified plugin directly from source, then package (no previous export needed)')
     p.add_argument('--game',help='INT game root with BepInEx interop references for --compile')
     a=p.parse_args(argv)
@@ -281,7 +317,8 @@ def main(argv=None):
         build=compile_plugin_from_source(release,game,ROOT/'artifacts'/('simple-build-'+timestamp))
     else: build=select('build',a.build)
     output=Path(a.output).resolve() if a.output else (ROOT.parent/'BetterAstralParty-1.2.1-SimpleInstall.zip')
-    prepare(build,release,output,csc_path(a.csc),a.sign_thumbprint)
+    prepare(build,release,output,csc_path(a.csc),a.sign_thumbprint,
+            Path(a.compatibility_review).resolve() if a.compatibility_review else None)
 
 if __name__=='__main__':
     try: main()
