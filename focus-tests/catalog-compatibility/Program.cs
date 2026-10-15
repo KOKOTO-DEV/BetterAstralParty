@@ -78,7 +78,7 @@ internal static class Program
         files.Add("AstralParty_INT_Data/StreamingAssets/aa/settings.json", Encoding.ASCII.GetBytes("{\"m_CatalogLocations\":[{\"m_Keys\":[\"AddressablesMainContentCatalogRemoteHash\"],\"m_InternalId\":\"{App.WebServerConfig.Path}/catalog_3.2.0.hash\"},{\"m_Keys\":[\"AddressablesMainContentCatalogCacheHash\"],\"m_InternalId\":\"{UnityEngine.Application.persistentDataPath}/com.unity.addressables/catalog_3.2.0.hash\"},{\"m_Keys\":[\"AddressablesMainContentCatalog\"],\"m_InternalId\":\"{UnityEngine.AddressableAssets.Addressables.RuntimePath}/catalog.bundle\",\"m_Dependencies\":[\"AddressablesMainContentCatalogRemoteHash\",\"AddressablesMainContentCatalogCacheHash\"]}]}"));
         var resource = new byte[32]; Encoding.ASCII.GetBytes("UnityFS\0").CopyTo(resource, 0);
         files.Add("AstralParty_INT_Data/data.unity3d", resource);
-        foreach (var name in names) files.Add("fixture-cache/" + name, Encoding.ASCII.GetBytes("inert catalog fixture: " + name));
+        foreach (var name in names) files.Add("fixture-cache/" + name, Encoding.ASCII.GetBytes(name.EndsWith(".json", StringComparison.Ordinal) ? "{\"m_LocatorId\":\"fixture\"}" : "0123456789abcdef0123456789abcdef"));
         return files;
     }
     private sealed class Seed
@@ -97,7 +97,7 @@ internal static class Program
                 var path = Path.Combine(Root, file.Key); Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                 if (file.Key != missing) File.WriteAllBytes(path, file.Value);
             }
-            foreach (var catalog in extra ?? Array.Empty<string>()) File.WriteAllText(Path.Combine(Cache, catalog), "unused historical fixture bytes");
+            foreach (var catalog in extra ?? Array.Empty<string>()) File.WriteAllText(Path.Combine(Cache, catalog), catalog.EndsWith(".json", StringComparison.Ordinal) ? "{\"m_LocatorId\":\"fixture-extra\"}" : "0123456789abcdef0123456789abcdef");
             var entries = files.Where(file => settingsAnchor || file.Key != "AstralParty_INT_Data/StreamingAssets/aa/settings.json").Select(file => new { root = file.Key.StartsWith("fixture-cache/", StringComparison.Ordinal) ? "cache" : "game", path = file.Key.StartsWith("fixture-cache/", StringComparison.Ordinal) ? file.Key.Substring(14) : file.Key, kind = "fixture", sha256 = file.Key == wrongDigest ? "not-a-digest" : Hash(file.Value) }).ToArray();
             Manifest = JsonSerializer.SerializeToUtf8Bytes(new { schema = 1, cacheCatalogs = expected, files = entries });
             File.WriteAllBytes(ManifestPath, Manifest);
@@ -117,32 +117,39 @@ internal static class Program
         good.Unchanged();
         var json = Path.Combine(good.Cache, "catalog_3.2.0.json"); var original = File.ReadAllBytes(json);
         // A pre-expiry call must retain the existing ten-second schedule; it must not rescan early.
-        File.WriteAllText(json, "changed current catalog"); guard.Verify(now.AddSeconds(9)); Check(true, "runtime retained interval");
-        Reject(() => guard.Verify(now.AddSeconds(10)), "runtime current hash mandatory after interval"); File.WriteAllBytes(json, original);
+        File.WriteAllText(json, "{\"m_LocatorId\":\"updated\"}"); guard.Verify(now.AddSeconds(9)); Check(true, "runtime retained interval");
+        guard.Verify(now.AddSeconds(10)); Check(true, "runtime content-only digest drift permitted"); File.WriteAllBytes(json, original);
         guard.Verify(now.AddSeconds(10));
         var pendingField = typeof(CatalogGuard).GetField("_pending", BindingFlags.NonPublic | BindingFlags.Instance)!;
         guard.Poll(now.AddSeconds(19)); Check(pendingField.GetValue(guard) == null, "poll skips before interval");
-        File.WriteAllText(Path.Combine(good.Cache, "catalog_3.3.0.json"), "newer catalog fixture");
+        File.WriteAllText(Path.Combine(good.Cache, "catalog_3.3.0.json"), "{\"m_LocatorId\":\"next\"}");
         guard.Poll(now.AddSeconds(20)); var task = (Task?)pendingField.GetValue(guard); Check(task != null, "poll starts one worker");
-        try { task!.GetAwaiter().GetResult(); } catch (InvalidDataException) { }
-        Reject(() => guard.Poll(now.AddSeconds(20)), "poll observes worker failure");
+        task!.GetAwaiter().GetResult();
+        guard.Poll(now.AddSeconds(20)); Check(true, "incomplete newer pair does not block active catalog");
         good.Unchanged();
         foreach (var test in new[] { ("newer", new[] { "catalog_3.2.1.hash" }), ("unknown", new[] { "catalog_other.json" }), ("leading-zero", new[] { "catalog_03.1.0.hash" }), ("uppercase", new[] { "catalog_3.3.0.HASH" }) })
         {
             var seed = new Seed(scratch, "runtime-" + test.Item1, extra: test.Item2);
-            Reject(() => new CatalogGuard(seed.ManifestPath, seed.Cache).Verify(now), "runtime " + test.Item1 + " blocked"); seed.Unchanged();
+            if (test.Item1 == "newer") { new CatalogGuard(seed.ManifestPath, seed.Cache).Verify(now); Check(true, "runtime incomplete newer pending accepted"); }
+            else Reject(() => new CatalogGuard(seed.ManifestPath, seed.Cache).Verify(now), "runtime " + test.Item1 + " blocked"); seed.Unchanged();
         }
         foreach (var missing in Current)
         {
             var seed = new Seed(scratch, "runtime-missing-" + Path.GetExtension(missing)[1..], missing: "fixture-cache/" + missing);
             Reject(() => new CatalogGuard(seed.ManifestPath, seed.Cache).Verify(now), "runtime missing expected"); seed.Unchanged();
         }
+        var replaced = new Seed(scratch, "runtime-replaced", extra: new[] { "catalog_3.2.1.json", "catalog_3.2.1.hash" });
+        var replacedGuard = new CatalogGuard(replaced.ManifestPath, replaced.Cache);
+        replacedGuard.Verify(now); Check(true, "new active catalog pair allowed");
+        foreach (var old in Current) File.Delete(Path.Combine(replaced.Cache, old));
+        replacedGuard.Verify(now.AddSeconds(10)); Check(true, "superseded baseline can disappear after update");
+        // Source files were intentionally changed in this scratch fixture.
         var malformed = new Seed(scratch, "runtime-malformed-digest", wrongDigest: "fixture-cache/catalog_3.2.0.json");
         Reject(() => new CatalogGuard(malformed.ManifestPath, malformed.Cache).Verify(now), "runtime malformed digest"); malformed.Unchanged();
-        foreach (var test in new[] { ("no-settings-exact", Current, Array.Empty<string>(), true), ("no-settings-older", Current, new[] { "catalog_3.1.0.hash" }, false), ("legacy-exact", new[] { "catalog_fixture.hash", "catalog_fixture.json" }, Array.Empty<string>(), true), ("legacy-extra", new[] { "catalog_fixture.hash", "catalog_fixture.json" }, new[] { "catalog_1.0.0.hash" }, false) })
+        foreach (var test in new[] { ("no-settings-exact", Current, Array.Empty<string>(), true), ("no-settings-older", Current, new[] { "catalog_3.1.0.hash" }, true), ("legacy-exact", new[] { "catalog_fixture.hash", "catalog_fixture.json" }, Array.Empty<string>(), false), ("legacy-extra", new[] { "catalog_fixture.hash", "catalog_fixture.json" }, new[] { "catalog_1.0.0.hash" }, false) })
         {
             var seed = new Seed(scratch, "runtime-" + test.Item1, expected: test.Item2, extra: test.Item3, settingsAnchor: false);
-            if (test.Item4) { new CatalogGuard(seed.ManifestPath, seed.Cache).Verify(now); Check(true, "runtime " + test.Item1 + " exact fallback accepted"); }
+            if (test.Item4) { new CatalogGuard(seed.ManifestPath, seed.Cache).Verify(now); Check(true, "runtime " + test.Item1 + " accepted"); }
             else Reject(() => new CatalogGuard(seed.ManifestPath, seed.Cache).Verify(now), "runtime " + test.Item1 + " extras without anchor blocked");
             seed.Unchanged();
         }

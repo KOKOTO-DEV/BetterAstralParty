@@ -249,6 +249,86 @@ internal static class BetterAstralPartySetup
         }
         if (IsOfficialPresent(game)) throw new Exception("Conflicting original installation detected. Refusing local launch.");
     }
+    // Content-only updates must not silently downgrade code or loader checks.
+    // These are the ONLY paths permitted to drift from a reviewed SHA-256.
+    static bool IsMutableContent(string key) {
+        return key == "game/AstralParty_INT_Data/data.unity3d" ||
+            key == "game/AstralParty_INT_Data/StreamingAssets/aa/settings.json" ||
+            key == "game/AstralParty_INT_Data/StreamingAssets/aa/catalog.bundle" ||
+            key.StartsWith("cache/catalog_", StringComparison.Ordinal);
+    }
+    static Version CatalogVersion(string name) {
+        var match = Regex.Match(name, @"^catalog_((?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8}))\.(?:json|hash)$");
+        Version result;
+        return match.Success && Version.TryParse(match.Groups[1].Value, out result) ? result : null;
+    }
+    static void CheckJson(string file, string key) {
+        var info = new FileInfo(file);
+        if (info.Length == 0 || info.Length > 64L * 1024 * 1024)
+            throw new Exception("Invalid JSON content size: " + key);
+        try {
+            var value = new JavaScriptSerializer { MaxJsonLength = 64 * 1024 * 1024, RecursionLimit = 256 }
+                .DeserializeObject(File.ReadAllText(file, Encoding.UTF8));
+            if (!(value is System.Collections.IDictionary)) throw new Exception("Not an object");
+        } catch (Exception ex) { throw new Exception("Invalid JSON content: " + key, ex); }
+    }
+    static void CheckUnityFS(string source, string key) {
+        using (var stream = File.OpenRead(source)) {
+            byte[] header = new byte[8];
+            if (stream.Length < 32 || stream.Read(header, 0, 8) != 8 ||
+                Encoding.ASCII.GetString(header) != "UnityFS\0")
+                throw new Exception("Invalid UnityFS bundle: " + key);
+        }
+    }
+    static void CheckCatalogHash(string source, string key) {
+        var info = new FileInfo(source);
+        if (info.Length == 0 || info.Length > 4096)
+            throw new Exception("Invalid catalog hash size: " + key);
+        string value = File.ReadAllText(source, Encoding.UTF8).Trim();
+        if (value.Length == 0 || value.Any(c => char.IsControl(c)))
+            throw new Exception("Invalid catalog hash value: " + key);
+    }
+    static void CheckMutableContent(string source, string key) {
+        if (key == "game/AstralParty_INT_Data/data.unity3d" ||
+            key == "game/AstralParty_INT_Data/StreamingAssets/aa/catalog.bundle") CheckUnityFS(source, key);
+        else if (key == "game/AstralParty_INT_Data/StreamingAssets/aa/settings.json" ||
+                 key.EndsWith(".json", StringComparison.Ordinal)) CheckJson(source, key);
+        else if (key.EndsWith(".hash", StringComparison.Ordinal)) CheckCatalogHash(source, key);
+        else throw new Exception("Unknown mutable content: " + key);
+    }
+    static void VerifyCatalogInventory(string cache, CompatibilityDocument manifest) {
+        if (manifest.cacheCatalogs.Count != 2 || manifest.cacheCatalogs.Distinct(StringComparer.Ordinal).Count() != 2)
+            throw new Exception("Expected one reviewed Addressables catalog pair.");
+        var baseline = CatalogVersion(manifest.cacheCatalogs[0]);
+        if (baseline == null || manifest.cacheCatalogs.Any(name => CatalogVersion(name) == null || CatalogVersion(name).CompareTo(baseline) != 0) ||
+            !manifest.cacheCatalogs.Contains("catalog_" + baseline + ".json") ||
+            !manifest.cacheCatalogs.Contains("catalog_" + baseline + ".hash"))
+            throw new Exception("Invalid reviewed catalog names.");
+        if (!Directory.Exists(cache)) throw new Exception("Addressables cache unavailable: " + cache);
+        var actual = Directory.GetFiles(cache).Select(Path.GetFileName)
+            .Where(name => Regex.IsMatch(name, @"^catalog.*\.(json|hash)$", RegexOptions.IgnoreCase))
+            .ToArray();
+        if (actual.Length > 512 || actual.Distinct(StringComparer.Ordinal).Count() != actual.Length ||
+            actual.Any(name => CatalogVersion(name) == null))
+            throw new Exception("Malformed Addressables catalog inventory.");
+        var completed = actual.Select(CatalogVersion).Distinct().Where(version =>
+            actual.Contains("catalog_" + version + ".json") &&
+            actual.Contains("catalog_" + version + ".hash")).OrderByDescending(version => version).ToArray();
+        if (completed.Length == 0 || completed[0].CompareTo(baseline) < 0)
+            throw new Exception("No complete current Addressables catalog pair.");
+        var active = completed[0];
+        foreach (var ext in new[] { ".json", ".hash" }) {
+            var name = "catalog_" + active + ext;
+            CheckMutableContent(Target(cache, name), "cache/" + name);
+        }
+        if (active.CompareTo(baseline) > 0)
+            Console.WriteLine("Warning: newer Addressables catalog " + active + "; runtime feature guards remain enabled.");
+        foreach (var name in actual) {
+            var version = CatalogVersion(name);
+            if (version.CompareTo(active) > 0)
+                Console.WriteLine("Warning: incomplete newer catalog is downloading: " + name);
+        }
+    }
     static void VerifyCompatibleGame(string game) {
         string path = Target(game,"BetterAstralParty.compatibility.json");
         var manifest = new JavaScriptSerializer { MaxJsonLength = 8 * 1024 * 1024 }
@@ -265,53 +345,35 @@ internal static class BetterAstralPartySetup
                 throw new Exception("Unsafe compatibility entry.");
             string key = file.root + "/" + file.path;
             if (!seen.Add(key)) throw new Exception("Duplicate compatibility entry: " + key);
+            if (file.root == "cache" && CatalogVersion(file.path) == null)
+                throw new Exception("Unexpected catalog baseline name: " + key);
             string source = Target(file.root == "game" ? game : cache, file.path);
-            if (!File.Exists(source)) throw new Exception("Missing game resource: " + key);
-            // The original release treats a UnityFS resource change as advisory
-            // provided it still has a valid UnityFS header. Preserve that rule.
-            bool advisory = key == "game/AstralParty_INT_Data/data.unity3d";
-            if (advisory) {
-                using (var stream = File.OpenRead(source)) {
-                    byte[] header = new byte[8];
-                    if (stream.Length < 32 || stream.Read(header,0,8)!=8 ||
-                        Encoding.ASCII.GetString(header)!="UnityFS\0")
-                        throw new Exception("Invalid UnityFS resource: " + key);
-                }
+            if (!File.Exists(source)) {
+                // A newer COMPLETE pair may supersede an old downloaded pair.
+                // Mandatory local game and loader files are NEVER optional.
+                if (file.root == "cache") continue;
+                throw new Exception("Missing game/runtime file: " + key);
             }
-            if (!SameHash(source,file.sha256)) {
-                if (advisory) Console.WriteLine("Warning: game resource changed; UI compatibility guards remain enabled: " + key);
-                else throw new Exception("Game version / resource not supported: " + key);
+            bool same = SameHash(source, file.sha256);
+            // Reviewed exact files need no re-parsing; validate resource structure
+            // whenever an advisory content update arrives.
+            if (key == "game/AstralParty_INT_Data/data.unity3d" ||
+                (IsMutableContent(key) && !same)) CheckMutableContent(source, key);
+            if (!same) {
+                if (IsMutableContent(key))
+                    Console.WriteLine("Warning: content hash changed (not executable): " + key);
+                else throw new Exception("Game executable / loader / metadata changed; review required: " + key);
             }
         }
         foreach (string required in new[]{"game/AstralParty_INT.exe","game/GameAssembly.dll","game/UnityPlayer.dll",
-            "game/winhttp.dll","game/AstralParty_INT_Data/StreamingAssets/aa/catalog.bundle",
+            "game/winhttp.dll","game/AstralParty_INT_Data/il2cpp_data/Metadata/global-metadata.dat",
+            "game/AstralParty_INT_Data/StreamingAssets/aa/settings.json",
+            "game/AstralParty_INT_Data/StreamingAssets/aa/catalog.bundle",
             "game/AstralParty_INT_Data/data.unity3d"})
             if (!seen.Contains(required)) throw new Exception("Incomplete compatibility manifest: " + required);
-        if (!Directory.Exists(cache)) throw new Exception("Addressables cache unavailable: " + cache);
-        var actual = Directory.GetFiles(cache).Select(Path.GetFileName)
-            .Where(name=>Regex.IsMatch(name,@"^catalog.*\.(json|hash)$",RegexOptions.IgnoreCase))
-            .ToArray();
-        if (actual.Length > 512) throw new Exception("Unexpected Addressables cache inventory.");
-        var expected = new HashSet<string>(manifest.cacheCatalogs,StringComparer.Ordinal);
-        if (expected.Count != manifest.cacheCatalogs.Count || actual.Distinct(StringComparer.Ordinal).Count()!=actual.Length)
-            throw new Exception("Duplicate cache catalog entries.");
-        var present = new HashSet<string>(actual,StringComparer.Ordinal);
-        if (!expected.IsSubsetOf(present)) throw new Exception("Missing required Addressables catalogs.");
-        var extra = actual.Where(name=>!expected.Contains(name)).ToArray();
-        if (extra.Length > 0) {
-            if (manifest.cacheCatalogs.Count != 2) throw new Exception("Unexpected extra Addressables catalogs.");
-            var activeMatch = Regex.Match(manifest.cacheCatalogs[0], @"^catalog_([0-9]+\.[0-9]+\.[0-9]+)\.(json|hash)$");
-            Version active;
-            if (!activeMatch.Success || !Version.TryParse(activeMatch.Groups[1].Value,out active) ||
-                !expected.Contains("catalog_"+active+".json") || !expected.Contains("catalog_"+active+".hash"))
-                throw new Exception("Unexpected active cache catalog format.");
-            foreach (string name in extra) {
-                var m = Regex.Match(name,@"^catalog_([0-9]+\.[0-9]+\.[0-9]+)\.(json|hash)$");
-                Version old;
-                if (!m.Success || !Version.TryParse(m.Groups[1].Value,out old) || old.CompareTo(active)>=0)
-                    throw new Exception("Unreviewed cache catalog: " + name);
-            }
-        }
+        foreach (var name in manifest.cacheCatalogs)
+            if (!seen.Contains("cache/" + name)) throw new Exception("Missing reviewed cache manifest entry: " + name);
+        VerifyCatalogInventory(cache, manifest);
     }
     static void Launch(string game) {
         if (!string.Equals(Full(game),Full(Root),StringComparison.OrdinalIgnoreCase))

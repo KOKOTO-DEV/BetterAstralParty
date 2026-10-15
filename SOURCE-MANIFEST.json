@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "complete-clean-source-inventory",
-  "version": "1.2.1-PC-3.3.0-local",
+  "version": "1.2.1-PC-3.3.0-rolling-content-local",
   "files": [
     {
       "path": "Build-And-Package.cmd",
@@ -15,8 +15,8 @@
     },
     {
       "path": "CLEAN-SOURCE-README.ko.md",
-      "bytes": 2147,
-      "sha256": "6be1f6f5ec05e79984530abfac3e1b366f8a3e66a104da83c6b72e9c50326422"
+      "bytes": 2772,
+      "sha256": "ddbfc9c3a8b078c86ac9e3ca321491e094adc4c46e7025244f8f00cc26e147bf"
     },
     {
       "path": "Check-Security.cmd",
@@ -70,8 +70,8 @@
     },
     {
       "path": "README.md",
-      "bytes": 43686,
-      "sha256": "9ff262a8615b14155fc5a974645789dd24230e2a7abfce56d974fac761f077a9"
+      "bytes": 44158,
+      "sha256": "25e826ecd46e9c69a4c31951428f3b7fe82f610baddcb9e95dce4f800f445b4c"
     },
     {
       "path": "THIRD-PARTY-NOTICES/AsmResolver-LICENSE.txt",
@@ -199,6 +199,16 @@
       "sha256": "b56df95f026edbdd05058a37603390eece3e29edc8cc7b4ce377a2f35c3d382d"
     },
     {
+      "path": "diagnostics/DiagnosticBundle.cs",
+      "bytes": 100686,
+      "sha256": "e5beec1c67a0585876ac03b5d6358f19ead9ae9fc1c426805bca60a889f3e904"
+    },
+    {
+      "path": "diagnostics/MinimalDiagnosticProjection.cs",
+      "bytes": 17272,
+      "sha256": "6aaeb17da10bddfe5f37df0925dd3cb957d418a2cfb02bea0bda384acf78aa51"
+    },
+    {
       "path": "diagnostics-tests/BetterAstralParty.Diagnostics.Fixture.csproj",
       "bytes": 651,
       "sha256": "bf7a6c07d3bb99a7f41256979e835984f76186095e4c4bac43480e7ed75a2d86"
@@ -244,16 +254,6 @@
       "sha256": "50f0822856dd13c3654d23d2f1189482910123569c6fdb6967266ac46a358349"
     },
     {
-      "path": "diagnostics/DiagnosticBundle.cs",
-      "bytes": 100686,
-      "sha256": "e5beec1c67a0585876ac03b5d6358f19ead9ae9fc1c426805bca60a889f3e904"
-    },
-    {
-      "path": "diagnostics/MinimalDiagnosticProjection.cs",
-      "bytes": 17272,
-      "sha256": "6aaeb17da10bddfe5f37df0925dd3cb957d418a2cfb02bea0bda384acf78aa51"
-    },
-    {
       "path": "docs/BUILD.md",
       "bytes": 5319,
       "sha256": "c79425045fb0269c9574cbfb5a49e82ffc2be13f51597db2347085101f3ea012"
@@ -294,6 +294,11 @@
       "sha256": "3a26583f8c36d023a76bd6bdbdcde09c8f25a46ad2437d4dc5b26d70451bac25"
     },
     {
+      "path": "docs/RESOURCE-DRIFT-POLICY.md",
+      "bytes": 2495,
+      "sha256": "d0d326beaea5faa416964f39f3d58b6b66761601a8554eafabbd6c589851a780"
+    },
+    {
       "path": "docs/SIMPLE-ONECLICK.md",
       "bytes": 12488,
       "sha256": "4c82fa6175bc3f60bbd6163856e6ec79f97587f0f89b77cbcde805dd337e99dd"
@@ -320,8 +325,8 @@
     },
     {
       "path": "focus-tests/catalog-compatibility/Program.cs",
-      "bytes": 19882,
-      "sha256": "b574416ecd29f6b9139cc6a1f8687db076f795f714c272c058542210d0733404"
+      "bytes": 20770,
+      "sha256": "93b788894d96a9c3082c38608d513d99da028955e9ebb11fb0b0a5a8704ffe6c"
     },
     {
       "path": "focus-tests/channel-transition/ChannelTransitionTests.csproj",
@@ -525,8 +530,8 @@
     },
     {
       "path": "simple-installer/BetterAstralParty.Setup.cs",
-      "bytes": 39610,
-      "sha256": "b34d2c82f01a267f22c08975a8e754bf63cae3c83d370f355669a99e36a4a30d"
+      "bytes": 43388,
+      "sha256": "198057338a317e5103332cafcf62cba24318cc031efaf415818c1f9281a4eabc"
     },
     {
       "path": "simple-installer/Force-Uninstall.cmd",
@@ -630,8 +635,8 @@
     },
     {
       "path": "src/CatalogGuard.cs",
-      "bytes": 3006,
-      "sha256": "5fd7a930d00cfb68b7cc30b9f7b7cf4c01e5437ec3a8e07687de6049b5d6bfeb"
+      "bytes": 7041,
+      "sha256": "a419231ea2bc7291a36a37054426f76b97c83430e4678543d546f2b740ced22d"
     },
     {
       "path": "src/CharacterGuideUi.cs",
@@ -865,8 +870,8 @@
     },
     {
       "path": "src/Plugin.cs",
-      "bytes": 24646,
-      "sha256": "7e44de0bf9e85879758e7c7ca156c7d379ddbb30c7e489499a911cb581f5427e"
+      "bytes": 24811,
+      "sha256": "5b722953f81871f87dfc4ab64710150b634379b6c2a5891ebe2efcb00e90abea"
     },
     {
       "path": "src/PrivateReleaseSession.cs",
@@ -1035,8 +1040,8 @@
     },
     {
       "path": "tools/check-compatibility.ps1",
-      "bytes": 6422,
-      "sha256": "5d056fdba99a5191f36f284ef65339b59ea78f1af4a90418f3100ff86db654e9"
+      "bytes": 9106,
+      "sha256": "107f427e3b08053cfa3c31008d446d8933c07d317fe0b150a33d7e445d4f9bef"
     },
     {
       "path": "tools/check-security.ps1",
@@ -1155,8 +1160,8 @@
     },
     {
       "path": "tools/test-compatibility.ps1",
-      "bytes": 6401,
-      "sha256": "98f586251aea386651f0bbd9608e01f27e1775f83be0a5d458984b5c184609a6"
+      "bytes": 316,
+      "sha256": "515b51c98d59632c53e63b5565e210e80ecbfe7bff12aedd56f0a56116f060d1"
     },
     {
       "path": "tools/test-find-game.ps1",
@@ -1237,6 +1242,11 @@
       "path": "tools/test-oneclick-package.py",
       "bytes": 8752,
       "sha256": "f6d3afb11494f9cc5df72daf68bc4408b2fb4ee55685c946b44bb796d84677ff"
+    },
+    {
+      "path": "tools/test-resource-drift.ps1",
+      "bytes": 3464,
+      "sha256": "ecd5314da99af3a91fe245648456f5fc08084808f8d25beac671fa3573cc73be"
     },
     {
       "path": "tools/test-reviewed-compatibility.py",
@@ -1322,26 +1332,6 @@
       "path": "tools/uninstall.ps1",
       "bytes": 22187,
       "sha256": "67443f406d8f1a4d2e4273cf2ebe28c988637f4a27e5b827addfbc0826a2feda"
-    },
-    {
-      "path": "updater-safety-tests/BetterAstralParty.StagingTests.csproj",
-      "bytes": 437,
-      "sha256": "ae3d5f2b2ef531857503e58544658281f944401634fdb1e90e1399db306c40e6"
-    },
-    {
-      "path": "updater-safety-tests/CompatibilityFixtureData.cs",
-      "bytes": 1739,
-      "sha256": "c156cd6a9ea105a82faa61b1188b41f70b86e60489e7d07e8619e267a4414b7a"
-    },
-    {
-      "path": "updater-safety-tests/InertProcess.cs",
-      "bytes": 325,
-      "sha256": "d7429cdb051b80dc2fdd2500cec04e39410fd18cdc3947a4806183dcadb25a3e"
-    },
-    {
-      "path": "updater-safety-tests/StagingFixture.cs",
-      "bytes": 17447,
-      "sha256": "d374de54e7f5d9eace397bbbda35ba13eb1fd19fe9f91f200487f3b84232ce03"
     },
     {
       "path": "updater/AutomaticHelperUpgrade.cs",
@@ -1492,6 +1482,26 @@
       "path": "updater/WindowsProcessGuard.cs",
       "bytes": 11340,
       "sha256": "a8a8c6a6ac99e0ea46989ff4a7630ca17ce497c81255a5bc2d7120bd1cdfead0"
+    },
+    {
+      "path": "updater-safety-tests/BetterAstralParty.StagingTests.csproj",
+      "bytes": 437,
+      "sha256": "ae3d5f2b2ef531857503e58544658281f944401634fdb1e90e1399db306c40e6"
+    },
+    {
+      "path": "updater-safety-tests/CompatibilityFixtureData.cs",
+      "bytes": 1739,
+      "sha256": "c156cd6a9ea105a82faa61b1188b41f70b86e60489e7d07e8619e267a4414b7a"
+    },
+    {
+      "path": "updater-safety-tests/InertProcess.cs",
+      "bytes": 325,
+      "sha256": "d7429cdb051b80dc2fdd2500cec04e39410fd18cdc3947a4806183dcadb25a3e"
+    },
+    {
+      "path": "updater-safety-tests/StagingFixture.cs",
+      "bytes": 17447,
+      "sha256": "d374de54e7f5d9eace397bbbda35ba13eb1fd19fe9f91f200487f3b84232ce03"
     }
   ]
 }

@@ -192,6 +192,7 @@ public sealed class Plugin : BasePlugin
             Catalogs = new CatalogGuard(Path.Combine(gameRoot, "BetterAstralParty.compatibility.json"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                     "AppData", "LocalLow", "feimo", "AstralParty_INT", "com.unity.addressables"));
+            Catalogs.Warning += message => { Log.LogWarning("[Addressables compatibility] " + message); Diagnostics.Write("catalog-content-changed: " + message); };
             Catalogs.Verify(DateTime.UtcNow);
             DiagnosticHub.Stage(DiagnosticFeature.Loader, DiagnosticPhase.Catalog, DiagnosticOutcome.Completed);
             LoadStage(DiagnosticPhase.PatchRegistration);
